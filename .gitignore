@@ -1,0 +1,8 @@
+node_modules
+.env
+
+FANDF_FIREBASE_KEY.json
+*.zip
+backup files/
+assets/
+controller/test_cancel_email.js

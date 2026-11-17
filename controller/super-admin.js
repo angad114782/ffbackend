@@ -1,0 +1,14330 @@
+const bcryptjs = require("bcryptjs");
+const { Op, Sequelize } = require("sequelize");
+const fs = require("fs");
+const { dataNotFound, dataFound, encrypt } = require("../helper/functions");
+const { UploadFile, removefile } = require("../helper/multer");
+// const { bc_getCommonDetails } = require("../helper/bc-function");
+const CommonService = require("../services/bc-services");
+const {
+  User,
+  Address,
+  Customer,
+  Material,
+  CeilingType,
+  Wcr_Report,
+  WallType,
+  Feedback,
+  Liniing,
+  Room,
+  Wcr,
+  SheerFabric,
+  CurtainFabric,
+  CurtainStyle,
+  ScrewSize,
+  Brand,
+  Book,
+  SelectedCurtain,
+  SelectedSheer,
+  BorderType,
+  BeltType,
+  CurtainPattern,
+  Motorized_track,
+  BracketSize,
+  TieKnob,
+  RodType,
+  Enquiry,
+  EnquiryStatus,
+  SelectedMaterial,
+  OutletUser,
+  Outlet,
+  Notification,
+  Ladder,
+  Enquiry_Schedule,
+  RoomAsset,
+  Media,
+  Gathering,
+  CurtainOperation,
+  Finial,
+  LiningFabric,
+  SelectedRod,
+  SelectedTrack,
+  LBracket,
+  MaterialImage,
+  PelmetType,
+  Track,
+  MotorOperation,
+  BlindStyle,
+  BlindFittingType,
+  BlindWindowType,
+  BlindBorderType,
+  SelectedBlind,
+  BlindTrackType,
+  BlindMotorType,
+  BlindMotorTrackType,
+  ParkingSpace,
+  BlindSubType,
+  OutletAddress,
+  BlindShades,
+  BlindAsset,
+  Blind_Lining,
+  Blind_Lining_Fabric,
+  Schedule,
+  Warehouse,
+  InstallerSchedule,
+  Order,
+  InstallerTasks,
+  SofaType,
+  Complaint,
+  ComplaintTask,
+  Message,
+  ModeOfDelivery,
+  TailorVendor,
+  PaymentTerms,
+  Transport,
+  OrderItem,
+} = require("../model");
+const ejs = require("ejs");
+const path = require("path");
+const axios = require("axios");
+const {
+  complaint_resolved,
+  dashboardMessage,
+  complaint_close_msg,
+  enquiry_reopen_msg,
+  enquiry_cancellation_msg,
+} = require("../helper/messages");
+const sequelize = require("../utils/database");
+const { mail_formet } = require("../helper/mail");
+const {
+  sendMail,
+  send_notification,
+  sendSms,
+  whatsappMessage,
+  sendReportMessage,
+} = require("../helper/mailer");
+// const puppeteer = require('puppeteer');
+const moment = require("moment");
+
+function monthNumberToWord(monthNum) {
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  return months[monthNum - 1];
+}
+
+exports.itemsExcel = async (req, res, next) => {
+  try {
+    const name = req.query.name || "";
+    const collectionCode = req.query.collectionCode || "";
+    const brandCode = req.query.brandCode || "";
+    const categoryCode = req.query.categoryCode || "FABRIC";
+    const companyCode = req.query.companyCode;
+    const response = await axios.get(
+      `http://localhost:1232/get-item?name=${name}&collectionCode=${collectionCode}&brandCode=${brandCode}&categoryCode=${categoryCode}&companyCode=${companyCode}`,
+    );
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet(`ITEMS (${categoryCode})`);
+    const headerAlignment = { horizontal: "left" };
+
+    worksheet.columns = [
+      {
+        header: "Sr No",
+        key: "sr",
+        width: 5,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Name",
+        key: "name",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "ITEMID",
+        key: "itemId",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Collection Code",
+        key: "collection_code",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Qyt Inv",
+        key: "qyt_inv",
+        width: 10,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Batch Count",
+        key: "batch_count",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+    ];
+
+    for (let i = 0; i < response.data.data.length; i++) {
+      const item = response.data.data[i];
+      worksheet.addRow({
+        sr: i + 1,
+        name: item.Name,
+        itemId: item.ITEMID,
+        collection_code: item.CollectionCode,
+        qyt_inv: item.QtyInv,
+        batch_count: item.BatchCount,
+      }).border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", "attachment; filename=report.xlsx");
+
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.customerLedgerExcel = async (req, res, next) => {
+  try {
+    const fromDate = req.query.fromDate || "2015-01-03";
+    const toDate = req.query.toDate || new Date()?.toISOString()?.slice(0, 10);
+    const customerCode = req.query.customerCode || "FFG-C-51409";
+
+    const response = await axios.get(
+      `http://localhost:1232/customer-ledger?customerCode=${customerCode}&fromDate=${fromDate}&toDate=${toDate}`,
+    );
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet(`Ledger (${customerCode})`);
+    const headerAlignment = { horizontal: "left" };
+
+    worksheet.columns = [
+      {
+        header: "Sr No",
+        key: "sr",
+        width: 5,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Type",
+        key: "type",
+        width: 10,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Posting Date",
+        key: "posting_date",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Document No",
+        key: "document_no",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "CurrencyCode",
+        key: "currency_code",
+        width: 10,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Debit Amount",
+        key: "debit_amount",
+        width: 15,
+        style: { alignment: { horizontal: "right" } },
+      },
+      {
+        header: "Credit Amount",
+        key: "credit_amount",
+        width: 15,
+        style: { alignment: { horizontal: "right" } },
+      },
+    ];
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (let i = 0; i < response.data.data.length; i++) {
+      const item = response.data.data[i];
+      worksheet.addRow({
+        sr: i + 1,
+        type: item.Type,
+        posting_date: new Date(item.PostingDate)?.toISOString()?.split("T")[0],
+        document_no: item.DocumentCode,
+        currency_code: "INR",
+        debit_amount: item.DebitAmount,
+        credit_amount:
+          item.CreditAmount == 0 ? item.CreditAmount : `-${item.CreditAmount}`,
+      }).border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+      totalDebit += item.DebitAmount;
+      totalCredit += item.CreditAmount;
+    }
+    worksheet.addRow({
+      sr: "",
+      type: "",
+      posting_date: "",
+      document_no: "Total:",
+      currency_code: "",
+      debit_amount: totalDebit,
+      credit_amount: `-${totalCredit}`,
+    }).font = {
+      bold: true,
+    };
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + `Customer code(${customerCode}).xlsx`,
+    );
+    await workbook.xlsx.write(res);
+    return res.status(200).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+let authToken = null;
+let tokenExpiration = 0;
+
+exports.downloadInvoicePdf = async (req, res, next) => {
+  try {
+    if (!authToken && new Date() >= tokenExpiration) {
+      const userName = "admin";
+      const password = "csd123";
+      const loginUrl = "http://tailoring.fandf.in/user/login";
+      const payload = {
+        userName,
+        password,
+      };
+      const headers = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      const { data } = await axios.post(loginUrl, payload, { headers });
+
+      authToken = data;
+      tokenExpiration = Date.now() + 60 * 60 * 1000; // Assuming token is valid for 1 hour
+    }
+
+    const itemCode = req.query.code || "I-KN-2324-00297";
+    const response = await axios.get(
+      `http://tailoring.fandf.in/invoice/pdf?code=${itemCode}`,
+      {
+        headers: {
+          Authorization: "Bearer " + authToken,
+        },
+      },
+    );
+
+    const url = `http://tailoring.fandf.in/report/download?fileName=${response.data}&type=pdf`;
+    return res.json({ url: url });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.getCategory = async (req, res, next) => {
+//   try {
+//     const response = await axios.get(`http://localhost:1232/get-category`);
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.getCategory = async (req, res) => {
+  try {
+    // console.log("GET CATEGORY HIT");
+
+    const result = await CommonService.getCategory();
+
+    return res.status(200).json({
+      message: "query",
+      data: result.data,
+      status: true
+    });
+
+  } catch (error) {
+    console.error("getCategory Controller Error:", error.message);
+
+    return res.status(500).json({
+      message: "error",
+      data: [],
+      status: false
+    });
+  }
+};
+
+exports.stockItemList = async (req, res, next) => {
+  try {
+    const name = req.query.name || "";
+    const collectionCode = req.query.collectionCode || "";
+    const brandCode = req.query.brandCode || "";
+    const page = req.query.page;
+    const categoryCode = req.query.categoryCode || "FABRIC";
+    const pageSize = req.query.pageSize;
+    const companyCode = req.query.companyCode;
+    const response = await axios.get(
+      `http://localhost:1232/get-item?name=${name}&collectionCode=${collectionCode}&brandCode=${brandCode}&page=${page}&pageSize=${pageSize}&categoryCode=${categoryCode}&companyCode=${companyCode}`,
+    );
+    res.send(response.data);
+  } catch (e) {
+    next(e);
+  }
+};
+
+// exports.stockCommonDetails = async (req, res, next) => {
+//   try {
+//     const code = req.params.code || "";
+//     const response = await axios.get(
+//       `http://192.168.1.81:1232/get-common-details/${code}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.stockCommonDetails = async (req, res, next) => {
+  try {
+    const { code } = req.params;
+
+    if (!code) {
+      return res.status(400).json({
+        message: "Item code is required",
+        status: false
+      });
+    }
+
+    const data = await CommonService.getCommonDetails(code);
+
+    if (!data) {
+      return res.status(404).json({
+        message: "Item not found",
+        status: false
+      });
+    }
+
+    return res.status(200).json({
+      message: "query",
+      data,
+      status: true
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.stockItemDetails = async (req, res, next) => {
+//   try {
+//     const response = await axios.get(
+//       `http://localhost:1232/get-item-details?code=${req.query.code}&companyCode=${req.query.companyCode}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.stockItemDetails = async (req, res, next) => {
+  try {
+    const { code, companyCode } = req.query;
+
+    if (!code) {
+      return res.status(400).json({
+        message: "code is required",
+        data: {},
+        status: false
+      });
+    }
+
+    const result = await CommonService.getItemDetails({
+      code,
+      companyCode
+    });
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getAlternate = async (req, res, next) => {
+  try {
+    const productLook = req.query.productLook || "";
+    const categoryCode = req.query.categoryCode || "";
+    const colorCode = req.query.colorCode || "";
+    const searchText = req.query.searchText || "";
+
+    // const response = await axios.get(
+    //   `http://localhost:1232/get-alternate-items?productLook=${productLook}&categoryCode=${categoryCode}&colorCode=${colorCode}&searchText=${searchText}`,
+    // );
+    // res.send(response.data);
+
+    const result = await CommonService.getAlternateItems(productLook, categoryCode, colorCode, searchText);
+    return res.status(200).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+// exports.getBrands = async (req, res, next) => {
+//   try {
+//     let {
+//       collectionCode = "",
+//       searchText = "",
+//       categoryCode = "",
+//       orderBy = "",
+//       page = "",
+//       pageSize = "",
+//     } = req.query;
+//     const response = await axios.get(
+//       `http://localhost:1232/get-brands?page=${page}&pageSize=${pageSize}&searchText=${searchText}&categoryCode=${categoryCode}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.getBrands = async (req, res) => {
+  try {
+    let {
+      collectionCode = "",
+      searchText = "",
+      categoryCode = "",
+      orderBy = ""
+    } = req.query;
+
+    const page = parseInt(req.query.page || req.query.pageNo) || 1;
+const pageSize = parseInt(req.query.pageSize) || 10;
+
+    const params = {
+      collectionCode,
+      searchText,
+      categoryCode,
+      orderBy,
+      page,
+      pageSize
+    };
+
+    const result = await CommonService.getBrands(params);
+
+    return res.status(200).json({
+      message: "query",
+      data: result.data,
+      status: true
+    });
+
+  } catch (error) {
+    console.error("getBrands Controller Error:", error.message);
+
+    return res.status(500).json({
+      message: "error",
+      data: [],
+      status: false
+    });
+  }
+};
+
+exports.getCollections = async (req, res, next) => {
+  try {
+    let { searchText = "", categoryCode = "", brandCode = "" } = req.query;
+    // const response = await axios.get(
+    //   `http://192.168.1.81:1232/get-collections?searchText=${searchText}&categoryCode=${categoryCode}&brandCode=${brandCode}`,
+    // );
+    // res.send(response.data);
+
+    const result = await CommonService.getCollections(searchText, categoryCode, brandCode);
+
+    // Unbound action JSON returns { message, data, status }
+    return res.status(200).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
+
+// address  -- not sure 
+
+exports.address = async (req, res, next) => {
+  try {
+    const result = await CommonService.getAddresses();
+
+    return res.status(200).json({
+      message: "query",
+      data: result,
+      status: true
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// customer 
+
+exports.customer = async (req, res, next) => {
+  try {
+    const page = req.query.page || 1;
+    const pageSize = req.query.pageSize || 10;
+    const searchText = req.query.searchText || "";
+    //     const response = await axios.get(
+    //       `http://localhost:1232/get-customer?searchText=${searchText}&page=${page}&pageSize=${pageSize}`,
+    //     );
+    //     res.send(response.data);
+
+    const result = await CommonService.getCustomerPaginated({ page, pageSize, searchText });
+
+    return res.status(200).json({
+      message: "query",
+      data: result.data,
+      status: true
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// exports.customerLedger = async (req, res, next) => {
+//   try {
+//     const fromDate = req.query.fromDate || new Date();
+//     const toDate = req.query.toDate || new Date();
+//     const customerCode = req.query.customerCode || "";
+
+//     const response = await axios.get(
+//       `http://localhost:1232/customer-ledger?customerCode=${customerCode}&fromDate=${fromDate}&toDate=${toDate}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.customerLedger = async (req, res) => {
+  try {
+    const {
+      customerCode,
+      customerNo,
+      fromDate,
+      toDate
+    } = req.query;
+
+    const normalizedCustomerCode = customerCode || customerNo || "";
+
+    // 🔥 Default date handling (same as old API)
+    let fDate = new Date(fromDate);
+    let tDate = new Date(toDate);
+
+    fDate = isNaN(fDate)
+      ? new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000)
+      : fDate;
+
+    tDate = isNaN(tDate)
+      ? new Date()
+      : tDate;
+
+    const params = {
+      customerCode: normalizedCustomerCode,
+      fromDate: fDate,
+      toDate: tDate
+    };
+
+    // console.log("REQ QUERY:", req.query);
+
+    const result = await CommonService.getCustomerLedger(params);
+
+    return res.status(200).json({
+      totalData: result.totalData,
+      message: "query",
+      data: result.data,
+      status: true
+    });
+
+  } catch (error) {
+    console.error("CustomerLedger Controller Error:", error.message);
+
+    return res.status(500).json({
+      totalData: 0,
+      message: "error",
+      data: [],
+      status: false
+    });
+  }
+};
+
+// exports.totalBalance = async (req, res, next) => {
+//   try {
+//     const fromDate = req.query.fromDate || new Date();
+//     const toDate = req.query.toDate || new Date();
+//     const customerCode = req.query.customerCode || "";
+//     const page = parseInt(req.query.page) || 1;
+//     const pageSize = parseInt(req.query.pageSize) || 10;
+//     const response = await axios.get(
+//       `http://localhost:1232/total-balance?customerCode=${customerCode}&fromDate=${fromDate}&toDate=${toDate}&page=${page}&pageSize=${pageSize}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.totalBalance = async (req, res, next) => {
+  try {
+    const { customerCode, fromDate, toDate } = req.query;
+
+    if (!customerCode) {
+      return res.status(400).json({
+        message: "Customer code is required",
+        status: false
+      });
+    }
+
+    const data = await CommonService.getTotalBalance(
+      customerCode,
+      fromDate,
+      toDate
+    );
+
+    if (!data) {
+      return res.status(404).json({
+        message: "No data found",
+        status: false
+      });
+    }
+
+    return res.status(200).json({
+      message: "query",
+      data,
+      status: true
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.getInvoice = async (req, res, next) => {
+//   try {
+//     const fromDate = req.query.fromDate || "";
+//     const toDate = req.query.toDate || "";
+//     const customerCode = req.query.customerCode || "";
+//     const page = parseInt(req.query.page) || 1;
+//     const pageSize = parseInt(req.query.pageSize) || 10;
+//     const typeCode = req.query.typeCode || "INVOICE";
+//     const deliveryName = req.query.deliveryName || "";
+//     const searchText = req.query.searchText || "";
+//     const response = await axios.get(
+//       `http://localhost:1232/get-invoice?page=${page}&pageSize=${pageSize}&costumerCode=${customerCode}&typeCode=${typeCode}&fromDate=${fromDate}&toDate=${toDate}&searchText=${searchText}&deliveryName=${deliveryName}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.getInvoice = async (req, res, next) => {
+  try {
+    let fromDate = new Date(req.query.fromDate);
+    let toDate = new Date(req.query.toDate);
+
+    fromDate = isNaN(fromDate)
+      ? new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000)
+      : fromDate;
+
+    toDate = isNaN(toDate) ? new Date() : toDate;
+
+    let typeCode = req.query.typeCode;
+    if (typeCode === 'CREDIT_NOTE') typeCode = '4';
+    else if (typeCode === 'INVOICE') typeCode = '3';
+    else typeCode = null;
+
+    const params = {
+      ...req.query,
+      customerCode: req.query.customerCode || req.query.costumerCode || "",
+      typeCode: typeCode || "",
+      page: parseInt(req.query.page) || 1,
+      pageSize: parseInt(req.query.pageSize) || 10,
+      fromDate,
+      toDate
+    };
+
+    const result = await CommonService.getInvoice(params);
+
+    return res.status(200).json({
+      total: result.total,
+      message: "query",
+      data: result.data,
+      status: true
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.InvoiceDetails = async (req, res, next) => {
+//   try {
+//     const invoiceId = req.query.invoiceId;
+//     const response = await axios.get(
+//       `http://localhost:1232/get-invoice-details?invoiceId=${invoiceId}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.InvoiceDetails = async (req, res, next) => {
+  try {
+    const invoiceId = req.query.invoiceId;
+
+    if (!invoiceId) {
+      return res.status(400).json({ status: false, message: "Invoice ID is required" });
+    }
+
+    const data = await CommonService.getInvoiceDetails(invoiceId);
+
+    return res.status(200).json({
+      message: "query",
+      data: data || {},
+      status: true
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.deliveryNames = async (req, res, next) => {
+//   try {
+//     let {
+//       page,
+//       pageSize,
+//       orderBy = null,
+//       customerCode = "",
+//       fromDate = "",
+//       toDate = "",
+//       searchText = "",
+//       typeCode = "",
+//     } = req.query;
+//     page = parseInt(req.query.page) || 1;
+//     pageSize = parseInt(req.query.pageSize) || 10;
+//     const response = await axios.get(
+//       `http://localhost:1232/delivery-names?page=${page}&pageSize=${pageSize}&customerCode=${customerCode}&typeCode=${typeCode}&searchText=${searchText}&fromDate=${fromDate}&toDate=${toDate}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.deliveryNames = async (req, res, next) => {
+  try {
+    let {
+      page,
+      pageSize,
+      orderBy = null,
+      customerCode = "",
+      fromDate = "",
+      toDate = "",
+      searchText = "",
+      typeCode = "",
+    } = req.query;
+
+    // same parsing as old
+    page = parseInt(page) || 1;
+    pageSize = parseInt(pageSize) || 10;
+
+    // default dates (same logic)
+    fromDate = fromDate === ""
+      ? new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000)
+      : fromDate;
+
+    toDate = toDate === ""
+      ? new Date()
+      : toDate;
+
+    // same mapping
+    if (typeCode === 'CREDIT_NOTE') typeCode = '4';
+    else if (typeCode === 'INVOICE') typeCode = '3';
+    else typeCode = null;
+
+    // same validation
+    if (!customerCode) {
+      return res.status(200).json({
+        message: "query",
+        data: [],
+        status: true
+      });
+    }
+    const result = await CommonService.getDeliveryNames({
+      page,
+      pageSize,
+      orderBy,
+      customerCode,
+      fromDate,
+      toDate,
+      searchText,
+      typeCode
+    });
+
+    return res.status(200).json(result);
+
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.salesOrders = async (req, res, next) => {
+  try {
+    let fromDate = new Date(req.query.fromDate);
+    let toDate = new Date(req.query.toDate);
+
+    fromDate = isNaN(fromDate)
+      ? new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000)
+      : fromDate;
+
+    toDate = isNaN(toDate) ? new Date() : toDate;
+
+    const params = {
+      ...req.query,
+      page: parseInt(req.query.page) || 1,
+      pageSize: parseInt(req.query.pageSize) || 10,
+      fromDate,
+      toDate
+    };
+
+    const result = await CommonService.getSalesOrders(params);
+
+    return res.status(200).json({
+      message: "query",
+      totalCount: result.totalCount,
+      data: result.data,
+      status: true
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.salesOrdersDetails = async (req, res, next) => {
+//   try {
+//     const code = req.params.code;
+//     const response = await axios.get(
+//       `http://localhost:1232/sales-order-details/${code}`,
+//     );
+//     res.send(response.data);
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+exports.salesOrdersDetails =async(req, res) => {
+  try {
+    const { code } = req.params;
+
+    if (!code) {
+      return res.status(400).json({
+        message: "code is required",
+        data: {},
+        status: false
+      });
+    }
+
+    // console.log("REQ PARAM:", code);
+
+    const result = await CommonService.getSalesOrderDetails(code);
+
+    return res.status(200).json({
+      message: "query",
+      data: result.data,
+      status: true
+    });
+
+  } catch (error) {
+    console.error("SalesOrderDetails Controller Error:", error.message);
+
+    return res.status(500).json({
+      message: "error",
+      data: {},
+      status: false
+    });
+  }
+};
+
+exports.cancelEnquiry = async (req, res, next) => {
+  try {
+    const enquiry = await Enquiry.findOne({ where: { id: req.params.id } });
+
+    await enquiry.update({
+      status: "cancelled",
+      remark: req.query.remark,
+    });
+
+    const enquiryschedule = await Enquiry_Schedule.findAll({
+      where: { enquiryId: enquiry.id },
+    });
+
+    if (enquiryschedule && enquiryschedule.length > 0) {
+      for (var i = 0; i < enquiryschedule.length; i++) {
+        const item = enquiryschedule[i];
+        await item.update({ status: "cancelled" });
+      }
+    }
+
+    await EnquiryStatus.create({
+      remark: "Enquiry Cancelled",
+      enquiryId: enquiry.id,
+      status: "cancelled",
+      details: {
+        remark: req.query.remark,
+      },
+    });
+
+    const outlet_user = await OutletUser.findOne({
+      where: { salesPersonId: enquiry.salesId },
+      include: {
+        model: User,
+        as: "outlet",
+      },
+    });
+    const phoneNumber = outlet_user?.outlet?.phone || "9643319061";
+
+    ////////***************** ENQUIRY CANCELLED MESSAGE ****************////////////////////////
+    const customer = await Customer.findOne({
+      where: { id: enquiry.customerId },
+    });
+    await Message.create({
+      message: "enquiry_cancellation_msg",
+      enquiryId: enquiry.id,
+    });
+    const message = enquiry_cancellation_msg(
+      customer.firstName + " " + customer.lastName,
+      phoneNumber,
+    );
+    whatsappMessage(message, customer.primary_phone);
+    ////////***************** ENQUIRY CANCELLED MESSAGE ****************////////////////////////
+
+    res.status(200).json({
+      message: "Enquiry Cancelled",
+      data: enquiry,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.reopenEnquiry = async (req, res, next) => {
+  try {
+    const enquiry = await Enquiry.findOne({ where: { id: req.params.id } });
+
+    if (!enquiry) {
+      return res
+        .status(404)
+        .json({ message: "Enquiry not found", status: false });
+    }
+
+    const enquiryschedule = await Enquiry_Schedule.findOne({
+      where: { enquiryId: enquiry.id },
+    });
+
+    if (!enquiryschedule) {
+      await enquiry.update({
+        status: "fresh",
+      });
+    } else if (
+      enquiryschedule.measurement_start &&
+      enquiryschedule.measurement_done == null
+    ) {
+      await enquiryschedule.update({
+        status: "accepted",
+      });
+
+      await enquiry.update({
+        status: "measurer-assigned",
+      });
+    } else if (
+      enquiryschedule.measurement_start &&
+      enquiryschedule.measurement_done
+    ) {
+      await enquiryschedule.update({
+        status: "completed",
+      });
+
+      await enquiry.update({
+        status: "measurement-complete",
+      });
+    } else {
+      await enquiryschedule.update({
+        status: "pending",
+      });
+
+      await enquiry.update({
+        status: "measurer-assigned",
+      });
+    }
+
+    if (enquiry.estimate_createdAt && enquiry.estimate_postpone_date == null) {
+      await enquiry.update({
+        status: "estimate-created",
+      });
+    } else {
+      await enquiry.update({
+        status: "estimate-postpone",
+      });
+    }
+
+    await EnquiryStatus.create({
+      remark: "Enquiry Reopened",
+      enquiryId: enquiry.id,
+      status: "completed",
+      details: {
+        remark: req.query.remark || "Enquiry reopened by admin",
+      },
+    });
+
+    const outlet_user = await OutletUser.findOne({
+      where: { salesPersonId: enquiry.salesId },
+      include: {
+        model: User,
+        as: "outlet",
+      },
+    });
+    const phoneNumber = outlet_user?.outlet?.phone || "9643319061";
+    ////////***************** ENQUIRY REOPENED MESSAGE ****************////////////////////////
+    const customer = await Customer.findOne({
+      where: { id: enquiry.customerId },
+    });
+
+    if (customer) {
+      const message = enquiry_reopen_msg(
+        customer.firstName + " " + customer.lastName,
+        phoneNumber,
+      );
+      await Message.create({
+        message: "enquiry_reopen_msg",
+        enquiryId: enquiry.id,
+      });
+      whatsappMessage(message, customer.primary_phone);
+    }
+    ////////***************** ENQUIRY REOPENED MESSAGE ****************////////////////////////
+
+    res.status(200).json({
+      message: "Enquiry Reopened",
+      data: enquiry,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.addItem = async (req, res, next) => {
+  try {
+    if (req.query.itemId) {
+      //       const response = await axios.get(
+      //         `http://localhost:1232/get-curtain/${req.query.itemId}`,
+      //       );
+      //       const fabric = response.data.data[0];
+
+      const itemData = await CommonService.getCurtainDetails(req.query.itemId);
+      const fabric = itemData && itemData.length > 0 ? itemData[0] : null;
+
+      if (!fabric) {
+        throw new Error("ITEM NOT FOUND");
+      }
+
+      const fabric_data = await CurtainFabric.findOne({
+        where: { item_id: fabric.ITEMID },
+      });
+      if (!fabric_data) {
+        await CurtainFabric.create({
+          item_id: fabric.ITEMID,
+          fabric: fabric.NAMEALIAS,
+          width: fabric.WIDTH,
+          repeat_horizontal: fabric.REPEATHORIZONTAL,
+          repeat_vertical: fabric.REPEATVERTICAL,
+          book_name: fabric.COLLECTIONCODE,
+          brand_name: fabric.BRANDCODE,
+          price: fabric.MAXIMUMRETAILPRICE_IN,
+          tax: fabric.TAXVALUE,
+          category: fabric.CATEGORYCODE,
+          item_group: fabric.ITEMGROUPID,
+          is_blocked: false,
+          sales_price: fabric["SALES PRICE"],
+        });
+      } else {
+        await fabric_data.update({
+          fabric: fabric.NAMEALIAS,
+          width: fabric.WIDTH,
+          repeat_horizontal: fabric.REPEATHORIZONTAL,
+          repeat_vertical: fabric.REPEATVERTICAL,
+          brand_name: fabric.BRANDCODE,
+          book_name: fabric.COLLECTIONCODE,
+          price: fabric.MAXIMUMRETAILPRICE_IN,
+          sales_price: fabric["SALES PRICE"],
+          tax: fabric.TAXVALUE,
+          category: fabric.CATEGORYCODE,
+          item_group: fabric.ITEMGROUPID,
+          is_blocked: false,
+        });
+      }
+
+      return res.status(200).json({
+        message: "ITEM CREATED",
+        data: fabric,
+        status: true,
+      });
+    } else {
+      throw new Error("ITEM ID IS REQUIRD");
+    }
+  } catch (e) {
+    next(e);
+  }
+};
+
+
+exports.getItems = async (req, res) => {
+  try {
+    const result = await CommonService.getItemsNM(req.query);
+
+    return res.status(200).json({
+      message: "query",
+      data: result.data,
+      total: result.data.length,
+      status: true
+    });
+
+  } catch (error) {
+    console.error("Controller Error:", error.message);
+
+    return res.status(500).json({
+      message: "error",
+      data: [],
+      total: 0,
+      status: false
+    });
+  }
+};
+
+exports.newDashboard = async (req, res, next) => {
+  try {
+    const date = req.query.date;
+
+    const salesPersonIdFromQuery = req.query.salesId;
+    const salesPersonIds = [];
+    let stores;
+
+    if (salesPersonIdFromQuery) {
+      salesPersonIds.push(salesPersonIdFromQuery);
+    } else {
+      if (req.query.storeId) {
+        stores = await User.findAll({ where: { id: req.query.storeId } });
+      } else {
+        stores = await User.findAll({ where: { type: "outlet" } });
+      }
+      dataNotFound(stores[0], 404, "Store Not Found");
+
+      for (let i = 0; i < stores.length; i++) {
+        const store = stores[i];
+        const storeSalesPersons = await OutletUser.findAll({
+          where: { outletId: store.id },
+        });
+
+        for (let j = 0; j < storeSalesPersons.length; j++) {
+          const storeSalesPerson = storeSalesPersons[j];
+
+          if (storeSalesPerson) {
+            salesPersonIds.push(storeSalesPerson.dataValues.salesPersonId);
+          }
+        }
+      }
+    }
+
+    const total_enquiry = new Object();
+    const Measurements = new Object();
+    const Installations = new Object();
+    const Estimate = new Object();
+    const Orders = new Object();
+    const QC1 = new Object();
+    const QC2 = new Object();
+    const QC3 = new Object();
+    const Complaint = new Object();
+    const Feedbacks = new Object();
+
+    const whereCondition = {
+      salesId: { [Op.in]: salesPersonIds },
+    };
+
+    const enquiries = await Enquiry.findAll({
+      where: { ...whereCondition },
+      include: [
+        { model: Enquiry_Schedule, include: [Schedule] },
+        { model: InstallerTasks, include: [Schedule] },
+        { model: Feedback },
+        { model: Order },
+        { model: User },
+        { model: ComplaintTask },
+      ],
+    });
+
+    let measuremant_scheduled = 0;
+    let measuremant_pending = 0;
+    let measuremant_completed = 0;
+    let measuremant_cancelled = 0;
+    let measuremant_overdue = 0;
+    let measuremant_postpone = 0;
+
+    let installation_scheduled = 0;
+    let installation_pending = 0;
+    let installation_completed = 0;
+    let installer_cancelled = 0;
+    let installer_overdue = 0;
+    let installer_postpone = 0;
+
+    let enquiry_scheduled = 0;
+    let enquiry_completed = 0;
+    let enquiry_pending = 0;
+    let enquiry_cancelled = 0;
+    let enquiry_overdue = 0;
+
+    let estimate_scheduled = 0;
+    let estimate_completed = 0;
+    let estimate_pending = 0;
+    let estimate_cancelled = 0;
+    let estimate_overdue = 0;
+    let estimate_postpone = 0;
+    //let ee = "";
+
+    let feedbacks_scheduled = 0;
+    let feedbacks_pending = 0;
+    let feedbacks_overdue = 0;
+    let feedbacks_completed = 0;
+
+    let order_postpone = 0;
+    let order_scheduled = 0;
+    let order_pending = 0;
+    let order_completed = 0;
+    let order_cancelled = 0;
+    let order_overdue = 0;
+
+    let qc1_scheduled = 0;
+    let qc1_pending = 0;
+    let qc1_completed = 0;
+    let qc1_cancelled = 0;
+    let qc1_overdue = 0;
+
+    let qc2_scheduled = 0;
+    let qc2_pending = 0;
+    let qc2_completed = 0;
+    let qc2_cancelled = 0;
+    let qc2_overdue = 0;
+
+    let qc3_scheduled = 0;
+    let qc3_pending = 0;
+    let qc3_completed = 0;
+    let qc3_cancelled = 0;
+    let qc3_overdue = 0;
+
+    let complaint_overdue = 0;
+    let complaint_pending = 0;
+    let complaint_completed = 0;
+    let complaint_cancelled = 0;
+
+    for (let i = 0; i < enquiries.length; i++) {
+      const item = enquiries[i];
+      const cancelledDate = new Date(item.updatedAt);
+
+      if (item) {
+        const createdAtDate = new Date(item.createdAt);
+        const currentDate = new Date(date);
+
+        const isOverdue =
+          item.status === "fresh" &&
+          currentDate.getTime() - createdAtDate.getTime() >
+          24 * 60 * 60 * 1000 &&
+          item.enquiryschedules == null;
+        enquiry_overdue += isOverdue ? 1 : 0;
+
+        enquiry_scheduled = item
+          ? enquiry_scheduled + 1
+          : enquiry_scheduled + 0;
+        enquiry_completed =
+          item.status == "completed"
+            ? enquiry_completed + 1
+            : enquiry_completed + 0;
+        enquiry_pending =
+          item.status !== "completed"
+            ? enquiry_pending + 1
+            : enquiry_pending + 0;
+        enquiry_cancelled =
+          item.status == "cancelled"
+            ? enquiry_cancelled + 1
+            : enquiry_cancelled + 0;
+      }
+
+      if (item.enquiryschedules.length > 0) {
+        const condition =
+          item.enquiryschedules[item.enquiryschedules.length - 1];
+
+        const conditionDate = new Date(condition.date);
+        const currentDate = new Date(date);
+        const completedDate = item.estimate_creation
+          ? new Date(item.estimate_creation)
+          : (condition.updatedAt ? new Date(condition.updatedAt.toISOString().slice(0, 10)) : null);
+
+        if (item.status == "measurer-assigned") {
+          const differenceInMs =
+            currentDate.getTime() - conditionDate.getTime();
+          const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+          const isOverdue =
+            (condition.status === "pending" ||
+              condition.status === "accepted") &&
+            differenceInDays >= 1;
+          measuremant_overdue += isOverdue ? 1 : 0;
+
+          measuremant_postpone =
+            condition.status === "postponed"
+              ? measuremant_postpone + 1
+              : measuremant_postpone;
+
+          measuremant_pending =
+            condition.status !== "postponed" &&
+              condition.status !== "completed" &&
+              conditionDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? measuremant_pending + 1
+              : measuremant_pending + 0;
+        }
+        if (condition.status === "completed") {
+          const completedDate = condition.measurement_done ? new Date(
+            condition.measurement_done.toISOString().slice(0, 10)
+          ) : null;
+
+          measuremant_completed =
+            completedDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? measuremant_completed + 1
+              : measuremant_completed;
+        }
+
+        measuremant_cancelled =
+          condition &&
+            item.status === "cancelled" &&
+            item.estimate_created == false &&
+            cancelledDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? measuremant_cancelled + 1
+            : measuremant_cancelled + 0;
+
+        isPostponed =
+          item.status == "estimate-postpone" &&
+          item.estimate_created == false &&
+          new Date(item.estimate_postpone_date) > currentDate;
+
+        // if (isPostponed) {
+        //   ee += item.id + ",";
+        // }
+        estimate_postpone = isPostponed
+          ? estimate_postpone + 1
+          : estimate_postpone;
+
+        if (
+          item.estimate_created == false &&
+          item.status !== "cancelled" &&
+          item.status !== "completed" &&
+          condition.status == "completed"
+        ) {
+          const differenceInMs =
+            currentDate.getTime() - completedDate.getTime();
+          const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+          if (item.status == "estimate-postpone") {
+            const estimate_postpone_date = new Date(
+              item.estimate_postpone_date,
+            );
+            estimate_pending =
+              estimate_postpone_date?.toISOString()?.slice(0, 10) ===
+                currentDate?.toISOString()?.slice(0, 10)
+                ? estimate_pending + 1
+                : estimate_pending;
+          }
+          if (item.status == "measurement-complete") {
+            const currentDate = new Date(date);
+            const measurement_complete_date = new Date(
+              condition.measurement_done,
+            );
+            const differenceInMs =
+              currentDate.getTime() - measurement_complete_date.getTime();
+            const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+            estimate_pending =
+              differenceInDays <= 1 ? estimate_pending + 1 : estimate_pending;
+          }
+
+          const isOverdue =
+            (item.status !== "estimate-postpone" && differenceInDays >= 2) ||
+            (item.status == "estimate-postpone" &&
+              new Date(item.estimate_postpone_date) < currentDate);
+          estimate_overdue += isOverdue ? 1 : 0;
+        }
+
+        if (item.estimate_created == true) {
+          const estimateDate = new Date(item.estimate_createdAt);
+          estimate_completed =
+            condition.status == "completed" &&
+              estimateDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? estimate_completed + 1
+              : estimate_completed + 0;
+        }
+      }
+
+      if (item.enquiryschedules.length > 0) {
+        const condition =
+          item.enquiryschedules[item.enquiryschedules.length - 1];
+        const currentDate = new Date(date);
+
+        estimate_cancelled =
+          item.estimate_created === true &&
+            item.status === "cancelled" &&
+            cancelledDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? estimate_cancelled + 1
+            : estimate_cancelled + 0;
+
+        if (
+          item.estimate_created == true &&
+          item.status !== "cancelled" &&
+          item.status !== "completed"
+        ) {
+          const estimateDate = item.estimate_createdAt
+            ? new Date(item.estimate_createdAt)
+            : new Date(item.estimate_postpone_date);
+
+          order_pending =
+            item.status !== "estimate-postpone" &&
+              estimateDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10) &&
+              item.orders &&
+              item.orders.length == 0
+              ? order_pending + 1
+              : order_pending + 0;
+          order_postpone =
+            item.status == "estimate-postpone" &&
+              currentDate < new Date(item.estimate_postpone_date)
+              ? order_postpone + 1
+              : order_postpone;
+
+          const isOverdue =
+            (condition.status === "completed" &&
+              item.status !== "estimate-postpone" &&
+              item.orders &&
+              item.orders?.length == 0 &&
+              currentDate.getTime() - estimateDate.getTime() >
+              48 * 60 * 60 * 1000) ||
+            (item.status == "estimate-postpone" &&
+              currentDate > new Date(item.estimate_postpone_date));
+          order_overdue += isOverdue ? 1 : 0;
+        }
+      }
+
+      if (
+        item.orders.length > 0 &&
+        item.orders[0].QC3 == true &&
+        item.status == "qc-complete"
+      ) {
+        const currentDate = new Date(date);
+        const qc3CompleteDate = new Date(item.orders[0].QC_Complete);
+        const differenceInMs =
+          currentDate.getTime() - qc3CompleteDate.getTime();
+        const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+        const isOverdue = differenceInDays > 1;
+        installer_overdue += isOverdue ? 1 : 0;
+      }
+      if (item.installer_tasks.length > 0) {
+        const condition = item.installer_tasks[item.installer_tasks.length - 1];
+
+        if (condition) {
+          const conditionDate = new Date(condition.date);
+          const currentDate = new Date(date);
+          const completedDate = condition.installation_done ? new Date(condition.installation_done) : null;
+
+          if (
+            item.status == "installer-assigned" ||
+            item.status == "installation-started"
+          ) {
+            const differenceInMs =
+              currentDate.getTime() - conditionDate.getTime();
+            const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+            const isOverdue =
+              (condition.status === "pending" ||
+                condition.status === "active") &&
+              differenceInDays >= 1;
+            installer_overdue += isOverdue ? 1 : 0;
+
+            installer_postpone =
+              condition.status === "postponed"
+                ? installer_postpone + 1
+                : installer_postpone;
+            installation_pending =
+              (condition.status !== "completed" ||
+                condition.status !== "wcr_completed") &&
+                condition.status !== "postponed" &&
+                conditionDate?.toISOString()?.slice(0, 10) ===
+                currentDate?.toISOString()?.slice(0, 10)
+                ? installation_pending + 1
+                : installation_pending + 0;
+          }
+          installation_completed =
+            (condition.status === "wcr_completed" ||
+              condition.status === "completed") &&
+              completedDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? installation_completed + 1
+              : installation_completed;
+        }
+      }
+
+      if (!item.feedback && item.status == "completed") {
+        const currentDate = new Date(date);
+        const completedDate = new Date(item.updatedAt);
+        const differenceInMs = currentDate.getTime() - completedDate.getTime();
+        const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+        feedbacks_pending =
+          differenceInDays <= 3 ? feedbacks_pending + 1 : feedbacks_pending;
+        feedbacks_overdue =
+          differenceInDays > 3 ? feedbacks_overdue + 1 : feedbacks_overdue;
+      }
+
+      if (item.feedback) {
+        if (item.status == "completed") {
+          const completedDate = new Date(item.feedback.createdAt);
+          const currentDate = new Date(date);
+          feedbacks_completed =
+            completedDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? feedbacks_completed + 1
+              : feedbacks_completed;
+        }
+      }
+
+      // const customer_complaint = await ComplaintTask.count({where: {enquiryId: null}});
+
+      if (item.complaint_tasks.length > 0) {
+        item.complaint_tasks.forEach((element) => {
+          const complaint_date = element.date
+            ? new Date(element.date)
+            : new Date();
+          const currentDate = new Date(date);
+          const completed_date = new Date(element.updatedAt);
+          const timeLimit = 24 * 60 * 60 * 1000;
+
+          const differenceInMs =
+            currentDate.getTime() - complaint_date.getTime();
+          const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+          if (element.status == "pending" || element.status == "active") {
+            complaint_pending =
+              differenceInDays < 2
+                ? complaint_pending + 1
+                : complaint_pending + 0;
+            complaint_overdue =
+              differenceInDays >= 2
+                ? complaint_overdue + 1
+                : complaint_overdue + 0;
+          }
+          complaint_completed =
+            element.status == "completed" &&
+              completed_date?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? complaint_completed + 1
+              : complaint_completed + 0;
+        });
+      }
+    }
+
+    total_enquiry.scheduled = enquiry_scheduled;
+    total_enquiry.pending = enquiry_pending;
+    total_enquiry.completed = enquiry_completed;
+    total_enquiry.cancelled = enquiry_cancelled;
+    total_enquiry.overdue = enquiry_overdue;
+
+    Measurements.scheduled = measuremant_scheduled;
+    Measurements.pending = measuremant_pending;
+    Measurements.completed = measuremant_completed;
+    Measurements.cancelled = measuremant_cancelled;
+    Measurements.overdue = measuremant_overdue;
+    Measurements.postpone = measuremant_postpone;
+
+    Estimate.scheduled = estimate_scheduled;
+    Estimate.pending = estimate_pending;
+    Estimate.completed = estimate_completed;
+    Estimate.cancelled = estimate_cancelled;
+    Estimate.overdue = estimate_overdue;
+    Estimate.postpone = estimate_postpone;
+
+    const order = await Order.findAll({
+      include: { model: Enquiry, where: whereCondition },
+    });
+
+    for (let i = 0; i < order.length; i++) {
+      const item = order[i];
+
+      if (item) {
+        //ORDER--------------------
+        const orderDate = new Date(item.orderDate);
+        const currentDate = new Date(date);
+        order_completed =
+          orderDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? order_completed + 1
+            : order_completed + 0;
+
+        //QC1----------------------
+        const qc1CompleteDate = new Date(item.QC_Start);
+        qc1_pending =
+          item.QC1 == false &&
+            orderDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? qc1_pending + 1
+            : qc1_pending + 0;
+        qc1_completed =
+          item.QC1 == true &&
+            qc1CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? qc1_completed + 1
+            : qc1_completed + 0;
+
+        if (
+          item.enquiry.estimate_created == true &&
+          item.enquiry.status !== "cancelled" &&
+          item.enquiry.status !== "completed"
+        ) {
+          const isQC1Overdue =
+            item.QC1 == false &&
+            currentDate.getTime() - orderDate.getTime() > 48 * 60 * 60 * 1000;
+          qc1_overdue += isQC1Overdue ? 1 : 0;
+        }
+
+        //QC2-----------------------
+        const qc2CompleteDate = new Date(item.QC2_Completed);
+        const timeLimit = 144 * 60 * 60 * 1000;
+        qc2_pending =
+          item.QC1 === true &&
+            item.QC2 === false &&
+            qc1CompleteDate >= currentDate - timeLimit
+            ? qc2_pending + 1
+            : qc2_pending;
+        qc2_completed =
+          item.QC2 == true &&
+            qc2CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? qc2_completed + 1
+            : qc2_completed + 0;
+
+        if (
+          item.enquiry.estimate_created == true &&
+          item.enquiry.status !== "cancelled" &&
+          item.enquiry.status !== "completed"
+        ) {
+          const isQC2Overdue =
+            item.QC1 == true &&
+            item.QC2 == false &&
+            currentDate.getTime() - qc1CompleteDate.getTime() >
+            144 * 60 * 60 * 1000;
+          qc2_overdue += isQC2Overdue ? 1 : 0;
+        }
+
+        //QC3-----------------------
+        const qc3CompleteDate = new Date(item.QC_Complete);
+        qc3_pending =
+          item.QC1 == true &&
+            item.QC2 == true &&
+            item.QC3 == false &&
+            qc2CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? qc3_pending + 1
+            : qc3_pending + 0;
+        qc3_completed =
+          item.QC3 == true &&
+            qc3CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? qc3_completed + 1
+            : qc3_completed + 0;
+
+        if (
+          item.enquiry.estimate_created == true &&
+          item.enquiry.status !== "cancelled" &&
+          item.enquiry.status !== "completed"
+        ) {
+          const isQC3Overdue =
+            item.QC1 == true &&
+            item.QC2 == true &&
+            item.QC3 == false &&
+            currentDate.getTime() - qc2CompleteDate.getTime() >
+            72 * 60 * 60 * 1000;
+          qc3_overdue += isQC3Overdue ? 1 : 0;
+        }
+      }
+    }
+
+    Orders.pending = order_pending;
+    Orders.completed = order_completed;
+    Orders.cancelled = order_cancelled;
+    Orders.overdue = order_overdue;
+    Orders.postpone = order_postpone;
+
+    Installations.pending = installation_pending;
+    Installations.completed = installation_completed;
+    Installations.cancelled = installer_cancelled;
+    Installations.overdue = installer_overdue;
+    Installations.postpone = installer_postpone;
+
+    QC1.pending = qc1_pending;
+    QC1.completed = qc1_completed;
+    QC1.cancelled = qc1_cancelled;
+    QC1.overdue = qc1_overdue;
+
+    QC2.pending = qc2_pending;
+    QC2.completed = qc2_completed;
+    QC2.cancelled = qc2_cancelled;
+    QC2.overdue = qc2_overdue;
+
+    QC3.pending = qc3_pending;
+    QC3.completed = qc3_completed;
+    QC3.cancelled = qc3_cancelled;
+    QC3.overdue = qc3_overdue;
+
+    Complaint.overdue = complaint_overdue;
+    Complaint.pending = complaint_pending;
+    Complaint.completed = complaint_completed;
+    Complaint.cancelled = complaint_cancelled;
+
+    Feedbacks.scheduled = feedbacks_scheduled;
+    Feedbacks.pending = feedbacks_pending;
+    Feedbacks.completed = feedbacks_completed;
+    Feedbacks.overdue = 0;
+    //console.log("postponed-estimates", ee);
+    console.log(feedbacks_overdue, "feedbacks_overdue");
+
+    return res.status(200).json({
+      message: "Data fetched successfully",
+      data: {
+        total_enquiry,
+        Measurements,
+        Estimate,
+        Orders,
+        QC1,
+        QC2,
+        QC3,
+        Installations,
+        Feedbacks,
+        Complaint,
+      },
+      status: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getEnquirySummaryDetails = async (req, res, next) => {
+  try {
+    let { ColumnName, RowName, fromDate, date } = req.query;
+
+    const salesPersonIdFromQuery = req.query.salesId;
+    const salesPersonIds = [];
+    let stores;
+
+    if (salesPersonIdFromQuery) {
+      salesPersonIds.push(salesPersonIdFromQuery);
+    } else {
+      if (req.query.storeId) {
+        stores = await User.findAll({ where: { id: req.query.storeId } });
+      } else {
+        stores = await User.findAll({ where: { type: "outlet" } });
+      }
+      dataNotFound(stores[0], 404, "Store Not Found");
+
+      for (let i = 0; i < stores.length; i++) {
+        const store = stores[i];
+        const storeSalesPersons = await OutletUser.findAll({
+          where: { outletId: store.id },
+        });
+
+        for (let j = 0; j < storeSalesPersons.length; j++) {
+          const storeSalesPerson = storeSalesPersons[j];
+
+          if (storeSalesPerson) {
+            salesPersonIds.push(storeSalesPerson.dataValues.salesPersonId);
+          }
+        }
+      }
+    }
+
+    const whereCondition = {
+      salesId: { [Op.in]: salesPersonIds },
+    };
+
+    const enquiries = await Enquiry.findAll({
+      where: whereCondition,
+      include: [
+        {
+          model: Enquiry_Schedule,
+          attributes: [
+            "status",
+            "date",
+            "createdAt",
+            "updatedAt",
+            "remark",
+            "postpone_date",
+            "postpone_count",
+            "measurement_done",
+          ],
+          include: [
+            { model: Schedule },
+            { model: User, attributes: ["firstName", "lastName"] },
+          ],
+        },
+        /* {
+          model: Customer,
+          attributes: [
+            "id",
+            "firstName",
+            "lastName",
+            "type",
+            "country_code",
+            "primary_phone",
+          ],
+        }, */
+
+        {
+model: Customer,
+attributes: [
+"id",
+"firstName",
+"lastName",
+"type",
+"country_code",
+"primary_phone",
+],
+include: [
+{
+model: Address,
+attributes: [
+"id",
+"contactPerson",
+"contactNumber",
+"country_code",
+"street",
+"address",
+"city",
+"state",
+"pincode",
+"latitude",
+"longitude",
+"type",
+],
+where: { type: { [Op.in]: ["delivery", "billing"] } },
+required: false,
+},
+],
+},
+
+        {
+          model: InstallerTasks,
+          include: [
+            { model: Schedule },
+            {
+              model: User,
+              as: "installer",
+              attributes: ["firstName", "lastName"],
+            },
+          ],
+        },
+        { model: Feedback },
+        { model: Order },
+        { model: User },
+        { model: ComplaintTask },
+      ],
+      attributes: [
+        "id",
+        "enquiryId",
+        "status",
+        "business_value",
+        "salesId",
+        "customerId",
+        "expected_delivery_date",
+        "updatedAt",
+        "createdAt",
+        "estimate_created",
+        "remark",
+        "estimate_createdAt",
+        "estimate_postpone_date",
+        "estimate_postpone_reason",
+        "estimate_creation",
+        "estimate_postpone_count",
+      ],
+    });
+
+    let scheduledTotal = [];
+    let pendingTotal = [];
+    let cancelledEnquiry = [];
+    let overdueEnquiry = [];
+    let completedTotal = [];
+
+    // for (let i = 0; i < enquiries.length; i++) {
+    //     const item = enquiries[i]
+
+    //         if (item) {
+    //             (item.status == "pending" || item.status == "inprogess" || item.status == "fresh") && (item.createdAt < new Date())  ? overdueEnquiry.push(item) : "";
+    //                 item ? scheduledTotal.push(item) : "";
+    //                 (item.status !== "completed") ? pendingTotal.push(item) : "";
+    //                 (item.status == "completed") ? completedTotal.push(item) : "";
+    //                 (item.status == "cancelled") ? cancelledEnquiry.push(item) : "";
+
+    //         }
+    // }
+
+    if (RowName == "total_enquiry") {
+      if (ColumnName == "Schedule") {
+        let newArr = [];
+
+        for (let j = 0; j < scheduledTotal.length; j++) {
+          const oldItem = scheduledTotal[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const startTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .createdAt
+              : oldItem.createdAt;
+
+          const endTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .updatedAt
+              : oldItem.updatedAt;
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            days: daysDiff < 1 ? "< 1" : Math.round(daysDiff).toString(),
+            aging:
+              hours < 24
+                ? "<24hrs"
+                : hours > 24 && hours < 48
+                  ? "24hrs"
+                  : hours > 48 && hours < 72
+                    ? "48hrs"
+                    : hours == 72
+                      ? "72hrs"
+                      : ">72hrs",
+            createdAt: oldItem.createdAt,
+            products: products,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+
+        for (let j = 0; j < pendingTotal.length; j++) {
+          const oldItem = pendingTotal[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const startTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .createdAt
+              : oldItem.createdAt;
+
+          const endTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .updatedAt
+              : oldItem.updatedAt;
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            days: daysDiff < 1 ? "< 1" : Math.round(daysDiff).toString(),
+            aging:
+              hours < 24
+                ? "<24hrs"
+                : hours > 24 && hours < 48
+                  ? "24hrs"
+                  : hours > 48 && hours < 72
+                    ? "48hrs"
+                    : hours == 72
+                      ? "72hrs"
+                      : ">72hrs",
+            createdAt: oldItem.createdAt,
+            products: products,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Cancelled") {
+        let newArr = [];
+        for (let j = 0; j < cancelledEnquiry.length; j++) {
+          const oldItem = cancelledEnquiry[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            remark: oldItem.remark,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < overdueEnquiry.length; j++) {
+          const oldItem = overdueEnquiry[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const startTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .createdAt
+              : oldItem.createdAt;
+
+          const endTime = new Date();
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            days: daysDiff < 1 ? "< 1" : Math.round(daysDiff).toString(),
+            aging:
+              hours < 24
+                ? "<24hrs"
+                : hours > 24 && hours < 48
+                  ? "24hrs"
+                  : hours > 48 && hours < 72
+                    ? "48hrs"
+                    : hours == 72
+                      ? "72hrs"
+                      : ">72hrs",
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Completed") {
+        let newArr = [];
+
+        for (let j = 0; j < completedTotal.length; j++) {
+          const oldItem = completedTotal[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const startTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .createdAt
+              : oldItem.createdAt;
+
+          const endTime =
+            oldItem.enquiryschedules.length > 0
+              ? oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1]
+                .updatedAt
+              : oldItem.updatedAt;
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            days: daysDiff < 1 ? "< 1" : Math.round(daysDiff).toString(),
+            aging:
+              hours < 24
+                ? "<24hrs"
+                : hours > 24 && hours < 48
+                  ? "24hrs"
+                  : hours > 48 && hours < 72
+                    ? "48hrs"
+                    : hours == 72
+                      ? "72hrs"
+                      : ">72hrs",
+            createdAt: oldItem.createdAt,
+            products: products,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+
+    let scheduledMesure = [];
+    let pendingMesure = [];
+    let cancelledMesure = [];
+    let overdueMesure = [];
+    let completedMesure = [];
+    let postponeMesure = [];
+
+    if (RowName == "Measurements") {
+      for (let i = 0; i < enquiries.length; i++) {
+        const item = enquiries[i];
+        if (item.enquiryschedules.length > 0) {
+          const condition =
+            item.enquiryschedules[item.enquiryschedules.length - 1];
+
+          if (condition) {
+            const cancelledDate = new Date(item.updatedAt);
+            const conditionDate = new Date(condition.date);
+            const currentDate = new Date(date);
+
+            if (item.status == "measurer-assigned") {
+              const differenceInMs =
+                currentDate.getTime() - conditionDate.getTime();
+              const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+              const isOverdue =
+                (condition.status === "pending" ||
+                  condition.status === "accepted") &&
+                differenceInDays >= 1;
+              isOverdue ? overdueMesure.push(item) : "";
+
+              condition.status === "postponed" ? postponeMesure.push(item) : "";
+              condition.status !== "postponed" &&
+                condition.status !== "completed" &&
+                conditionDate?.toISOString()?.slice(0, 10) ===
+                currentDate?.toISOString()?.slice(0, 10)
+                ? pendingMesure.push(item)
+                : "";
+            }
+
+            if (condition.status === "completed") {
+              const completedDate = condition.measurement_done ? new Date(
+                condition.measurement_done.toISOString().slice(0, 10)
+              ) : null;
+              completedDate?.toISOString()?.slice(0, 10) ===
+                currentDate?.toISOString()?.slice(0, 10)
+                ? completedMesure.push(item)
+                : "";
+            }
+            condition &&
+              item.status === "cancelled" &&
+              item.estimate_created == false &&
+              cancelledDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? cancelledMesure.push(item)
+              : "";
+          }
+        }
+      }
+
+      if (ColumnName == "Completed") {
+        let newArr = [];
+
+        for (let j = 0; j < completedMesure.length; j++) {
+          const oldItem = completedMesure[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            // reschedule_count: oldItem.enquiryschedules.length == 0 ? "" : oldItem.enquiryschedules.reduce((count, element) =>  element.status === "postponed" ? count + 1 : count, 0),
+            reschedule_remark:
+              oldItem.enquiryschedules.length == 0
+                ? ""
+                : oldItem.enquiryschedules
+                  .map((value) => value.remark)
+                  .join(""),
+            products: products.toString(),
+            estimate_createdAt: oldItem.estimate_createdAt,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+            newObject.reschedule_count = enquiryschedules.postpone_count;
+            newObject.postpone_date = enquiryschedules.postpone_date;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+
+        for (let j = 0; j < pendingMesure.length; j++) {
+          const oldItem = pendingMesure[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            reschedule_remark:
+              oldItem.enquiryschedules.length == 0
+                ? ""
+                : oldItem.enquiryschedules
+                  .map((value) => value.remark)
+                  .join(""),
+            products: products.toString(),
+            estimate_createdAt: oldItem.estimate_createdAt,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+            newObject.reschedule_count = enquiryschedules.postpone_count;
+            newObject.postpone_date = enquiryschedules.postpone_date;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Cancelled") {
+        let newArr = [];
+
+        for (let j = 0; j < cancelledMesure.length; j++) {
+          const oldItem = cancelledMesure[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            remark: oldItem.remark,
+            createdAt: oldItem.createdAt,
+            products: products,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            // reschedule_count: oldItem.enquiryschedules.length == 0 ? "" : oldItem.enquiryschedules.reduce((count, element) =>  element.status === "postponed" ? count + 1 : count, 0),
+            reschedule_remark: oldItem
+              ? `${oldItem.remark || ""}${oldItem.remark && oldItem.estimate_postpone_reason ? " " : ""}${oldItem.estimate_postpone_reason || ""}`
+              : "",
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+            newObject.reschedule_count = enquiryschedules.postpone_count;
+            newObject.postpone_date = enquiryschedules.postpone_date;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < overdueMesure.length; j++) {
+          const oldItem = overdueMesure[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            // reschedule_count: oldItem.enquiryschedules.length == 0 ? "" : oldItem.enquiryschedules.reduce((count, element) =>  element.status === "postponed" ? count + 1 : count, 0),
+            createdAt: oldItem.createdAt,
+            reschedule_remark:
+              oldItem.enquiryschedules.length == 0
+                ? ""
+                : oldItem.enquiryschedules
+                  .map((value) => value.remark)
+                  .join(""),
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+            newObject.reschedule_count = enquiryschedules.postpone_count;
+            newObject.postpone_date = enquiryschedules.postpone_date;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Postponed") {
+        let newArr = [];
+        for (let j = 0; j < postponeMesure.length; j++) {
+          const oldItem = postponeMesure[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            // reschedule_count: oldItem.enquiryschedules.length == 0 ? "" : oldItem.enquiryschedules.reduce((count, element) =>  element.status === "postponed" ? count + 1 : count, 0),
+            createdAt: oldItem.createdAt,
+            reschedule_remark:
+              oldItem.enquiryschedules.length == 0
+                ? ""
+                : oldItem.enquiryschedules
+                  .map((value) => value.remark)
+                  .join(""),
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+            newObject.reschedule_count = enquiryschedules.postpone_count;
+            newObject.postpone_date = enquiryschedules.postpone_date;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+
+    let estimateScheduled = [];
+    let pendingEstimate = [];
+    let overdueEstimate = [];
+    let estimateComplete = [];
+    let estimateCancelled = [];
+    let estimatePostpone = [];
+
+    if (RowName == "Estimate") {
+      for (let i = 0; i < enquiries.length; i++) {
+        const item = enquiries[i];
+
+        // if(item.id == 1152){
+        // }
+        if (item.enquiryschedules.length > 0) {
+          const condition =
+            item.enquiryschedules[item.enquiryschedules.length - 1];
+          if (condition) {
+            const currentDate = new Date(date);
+            const completedDate = item.estimate_creation
+              ? new Date(item.estimate_creation)
+              : new Date(condition.updatedAt?.toISOString()?.slice(0, 10));
+
+            const cancelledDate = new Date(item.updatedAt);
+
+            const estimate_postpone_date = new Date(
+              item.estimate_postpone_date,
+            );
+            item.status == "estimate-postpone" &&
+              item.estimate_created == false &&
+              estimate_postpone_date > currentDate
+              ? estimatePostpone.push(item)
+              : "";
+
+            if (
+              item.estimate_created == false &&
+              item.status !== "cancelled" &&
+              item.status !== "completed" &&
+              condition.status == "completed"
+            ) {
+              const differenceInMs =
+                currentDate.getTime() - completedDate.getTime();
+              const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+              if (item.status == "estimate-postpone") {
+                estimate_pending =
+                  estimate_postpone_date?.toISOString()?.slice(0, 10) ===
+                    currentDate?.toISOString()?.slice(0, 10)
+                    ? pendingEstimate.push(item)
+                    : "";
+              }
+              if (item.status == "measurement-complete") {
+                const currentDate = new Date(date);
+                const measurement_complete_date = new Date(
+                  condition.measurement_done,
+                );
+                const differenceInMs =
+                  currentDate.getTime() - measurement_complete_date.getTime();
+                const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+                estimate_pending =
+                  differenceInDays <= 1 ? pendingEstimate.push(item) : "";
+              }
+
+              const isOverdue =
+                (item.status !== "estimate-postpone" &&
+                  differenceInDays >= 2) ||
+                (item.status == "estimate-postpone" &&
+                  item.estimate_created == false &&
+                  estimate_postpone_date < currentDate);
+
+              isOverdue ? overdueEstimate.push(item) : "";
+            }
+
+            item.estimate_created === true &&
+              item.status === "cancelled" &&
+              cancelledDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? estimateCancelled.push(item)
+              : "";
+
+            if (item.estimate_created == true) {
+              const estimateDate = new Date(item.estimate_createdAt);
+              estimate_completed =
+                condition.status == "completed" &&
+                  estimateDate?.toISOString()?.slice(0, 10) ===
+                  currentDate?.toISOString()?.slice(0, 10)
+                  ? estimateComplete.push(item)
+                  : "";
+            }
+          }
+        }
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+
+        for (let j = 0; j < pendingEstimate.length; j++) {
+          const oldItem = pendingEstimate[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            createdAt: oldItem.createdAt,
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Completed") {
+        let newArr = [];
+
+        for (let j = 0; j < estimateComplete.length; j++) {
+          const oldItem = estimateComplete[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            createdAt: oldItem.createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < overdueEstimate.length; j++) {
+          const oldItem = overdueEstimate[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            createdAt: oldItem.createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Cancelled") {
+        let newArr = [];
+        for (let j = 0; j < estimateCancelled.length; j++) {
+          const oldItem = estimateCancelled[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            remark: oldItem.remark,
+            products: products,
+            createdAt: oldItem.createdAt,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Postponed") {
+        let newArr = [];
+
+        for (let j = 0; j < estimatePostpone.length; j++) {
+          const oldItem = estimatePostpone[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            createdAt: oldItem.createdAt,
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.enquiryschedules.length > 0) {
+            const enquiryschedules =
+              oldItem.enquiryschedules[oldItem.enquiryschedules.length - 1];
+            newObject.enquiryschedules = enquiryschedules;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+
+    let overdueInstaller = [];
+    let pendingInstaller = [];
+    let scheduleInstaller = [];
+    let completedInstaller = [];
+    let cancelledInstaller = [];
+    let postponeInstaller = [];
+
+    if (RowName == "Installation") {
+      for (let i = 0; i < enquiries.length; i++) {
+        const item = enquiries[i];
+
+        if (
+          item.orders.length > 0 &&
+          item.orders[0].QC3 == true &&
+          item.status == "qc-complete"
+        ) {
+          const currentDate = new Date(date);
+          const qc3CompleteDate = new Date(item.orders[0].QC_Complete);
+          const differenceInMs =
+            currentDate.getTime() - qc3CompleteDate.getTime();
+          const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+          const isOverdue = differenceInDays > 1;
+
+          isOverdue ? overdueInstaller.push(item) : "";
+        }
+
+        if (item.installer_tasks.length > 0) {
+          const condition =
+            item.installer_tasks[item.installer_tasks.length - 1];
+
+          if (condition) {
+            const conditionDate = new Date(condition.date);
+            const currentDate = new Date(date);
+            const completedDate = new Date(condition.installation_done);
+
+            if (
+              item.status == "installer-assigned" ||
+              item.status == "installation-started"
+            ) {
+              const differenceInMs =
+                currentDate.getTime() - conditionDate.getTime();
+              const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+              const isOverdue =
+                (condition.status === "pending" ||
+                  condition.status === "active") &&
+                differenceInDays >= 1;
+
+              isOverdue ? overdueInstaller.push(item) : "";
+
+              condition.status === "postponed"
+                ? postponeInstaller.push(item)
+                : "";
+
+              installation_pending =
+                (condition.status !== "completed" ||
+                  condition.status !== "wcr_completed") &&
+                  condition.status !== "postponed" &&
+                  conditionDate?.toISOString()?.slice(0, 10) ===
+                  currentDate?.toISOString()?.slice(0, 10)
+                  ? pendingInstaller.push(item)
+                  : "";
+            }
+            installation_completed =
+              (condition.status === "wcr_completed" ||
+                condition.status === "completed") &&
+                completedDate?.toISOString()?.slice(0, 10) ===
+                currentDate?.toISOString()?.slice(0, 10)
+                ? completedInstaller.push(item)
+                : "";
+          }
+        }
+      }
+
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < completedInstaller.length; j++) {
+          const oldItem = completedInstaller[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_remark:
+              oldItem.installer_tasks.length == 0
+                ? ""
+                : oldItem.installer_tasks.map((value) => value.remark).join(""),
+            createdAt: oldItem.createdAt,
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.installer_tasks.length > 0) {
+            const installer_tasks =
+              oldItem.installer_tasks[oldItem.installer_tasks.length - 1];
+            newObject.installer_tasks = installer_tasks;
+            newObject.reschedule_count = installer_tasks.postpone_count;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < pendingInstaller.length; j++) {
+          const oldItem = pendingInstaller[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            createdAt: oldItem.createdAt,
+            reschedule_remark:
+              oldItem.installer_tasks.length == 0
+                ? ""
+                : oldItem.installer_tasks.map((value) => value.remark).join(""),
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.installer_tasks.length > 0) {
+            const installer_tasks =
+              oldItem.installer_tasks[oldItem.installer_tasks.length - 1];
+            newObject.installer_tasks = installer_tasks;
+            newObject.reschedule_count = installer_tasks.postpone_count;
+          }
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < overdueInstaller.length; j++) {
+          const oldItem = overdueInstaller[j];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            createdAt: oldItem.createdAt,
+            reschedule_remark:
+              oldItem.installer_tasks.length == 0
+                ? ""
+                : oldItem.installer_tasks.map((value) => value.remark).join(""),
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.installer_tasks.length > 0) {
+            const installer_tasks =
+              oldItem.installer_tasks[oldItem.installer_tasks.length - 1];
+            newObject.installer_tasks = installer_tasks;
+            newObject.reschedule_count = installer_tasks.postpone_count;
+          }
+          if (oldItem.orders.length > 0) {
+            const order = {
+              order_status: oldItem.orders[0].orderStatus,
+              order_date: oldItem.orders[0].orderDate,
+              orderId: oldItem.orders[0].orderId,
+              qc1_complete_date: oldItem.orders[0].QC_Start,
+              qc2_complete_date: oldItem.orders[0].QC2_Completed,
+              qc3_complete_date: oldItem.orders[0].QC_Complete,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Postponed") {
+        let newArr = [];
+        for (let j = 0; j < postponeInstaller.length; j++) {
+          const oldItem = postponeInstaller[j];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            createdAt: oldItem.createdAt,
+            reschedule_remark:
+              oldItem.installer_tasks.length == 0
+                ? ""
+                : oldItem.installer_tasks.map((value) => value.remark).join(""),
+            products: products.toString(),
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (oldItem.installer_tasks.length > 0) {
+            const installer_tasks =
+              oldItem.installer_tasks[oldItem.installer_tasks.length - 1];
+            newObject.installer_tasks = installer_tasks;
+            newObject.reschedule_count = installer_tasks.postpone_count;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+
+    const order = await Order.findAll({
+      include: {
+        model: Enquiry,
+        where: whereCondition,
+        include: [
+          { model: User, attributes: ["id", "firstName", "lastName", "type"] },
+          {
+            model: Customer,
+            attributes: [
+              "id",
+              "firstName",
+              "lastName",
+              "type",
+              "country_code",
+              "primary_phone",
+            ],
+          },
+        ],
+        attributes: [
+          "id",
+          "enquiryId",
+          "status",
+          "salesId",
+          "customerId",
+          "expected_delivery_date",
+          "createdAt",
+          "estimate_createdAt",
+          "estimate_created",
+          "business_value",
+        ],
+      },
+      attributes: [
+        "orderId",
+        "orderStatus",
+        "orderDate",
+        "QC1",
+        "QC2",
+        "QC3",
+        "QC_Start",
+        "QC2_Completed",
+        "QC_Complete",
+        "createdAt",
+        "remark",
+        "updatedAt",
+        "sta_received_date",
+      ],
+    });
+
+    let orderScheduled = [];
+    let orderCompleted = [];
+    let cancelledOrder = [];
+    let overdueOrder = [];
+    let pendingOrder = [];
+    let postponeOrder = [];
+
+    let QC1_pending = [];
+    let QC1_scheduled = [];
+    let QC1_completed = [];
+    let QC1_cancelled = [];
+    let QC1_overdue = [];
+
+    let QC2_pending = [];
+    let QC2_scheduled = [];
+    let QC2_completed = [];
+    let QC2_cancelled = [];
+    let QC2_overdue = [];
+
+    let QC3_pending = [];
+    let QC3_scheduled = [];
+    let QC3_completed = [];
+    let QC3_cancelled = [];
+    let QC3_overdue = [];
+
+    if (RowName == "Orders") {
+      for (let i = 0; i < enquiries.length; i++) {
+        const item = enquiries[i];
+        if (item.enquiryschedules.length > 0) {
+          const condition =
+            item.enquiryschedules[item.enquiryschedules.length - 1];
+
+          if (
+            item.estimate_created == true &&
+            item.status !== "cancelled" &&
+            item.status !== "completed"
+          ) {
+            // const estimateDate = item.estimate_postpone_date ? new Date(item.estimate_postpone_date) : new Date(item.estimate_createdAt);
+            const estimateDate = item.estimate_createdAt
+              ? new Date(item.estimate_createdAt)
+              : new Date(item.estimate_postpone_date);
+
+            const currentDate = new Date(date);
+
+            item.status == "estimate-postpone" &&
+              item.estimate_created == true &&
+              currentDate < new Date(item.estimate_postpone_date)
+              ? postponeOrder.push(item)
+              : "";
+
+            item.status !== "estimate-postpone" &&
+              estimateDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10) &&
+              item.orders &&
+              item.orders.length == 0
+              ? pendingOrder.push(item)
+              : "";
+
+            const isOverdue =
+              (condition.status === "completed" &&
+                item.estimate_created == true &&
+                item.status !== "estimate-postpone" &&
+                item.orders &&
+                item.orders?.length == 0 &&
+                currentDate.getTime() - estimateDate.getTime() >
+                48 * 60 * 60 * 1000) ||
+              (item.status == "estimate-postpone" &&
+                currentDate > new Date(item.estimate_postpone_date));
+            isOverdue ? overdueOrder.push(item) : "";
+          }
+        }
+      }
+      for (let i = 0; i < order.length; i++) {
+        const item = order[i];
+        if (item) {
+          const currentDate = new Date(date);
+          const orderDate = new Date(item.orderDate);
+          orderDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? orderCompleted.push(item)
+            : "";
+        }
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < pendingOrder.length; j++) {
+          const oldItem = pendingOrder[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            products: products,
+            order_date: oldItem.orderDate,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (pendingOrder.length > 0) {
+            const order = {
+              order_status: "",
+              order_date: "",
+              orderId: "",
+            };
+            newObject.order = order;
+          }
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < overdueOrder.length; j++) {
+          const oldItem = overdueOrder[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            products: products,
+            order_date: oldItem.orderDate,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+          if (overdueOrder.length > 0) {
+            const order = {
+              order_status: "",
+              order_date: "",
+              orderId: "",
+            };
+            newObject.order = order;
+          }
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < orderCompleted.length; j++) {
+          const oldItem = orderCompleted[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            products: products,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (orderCompleted.length > 0) {
+            const order = {
+              order_status: orderCompleted[j].orderStatus,
+              order_date: orderCompleted[j].orderDate,
+              orderId: orderCompleted[j].orderId,
+            };
+            newObject.order = order;
+            newObject.remark = orderCompleted[j].remark
+              ? orderCompleted[j].remark
+              : "";
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Postponed") {
+        let newArr = [];
+        for (let j = 0; j < postponeOrder.length; j++) {
+          const oldItem = postponeOrder[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            order_date: oldItem.orderDate,
+            estimate_createdAt: oldItem.estimate_createdAt,
+            reschedule_count: oldItem.estimate_postpone_count,
+            estimate_postpone_date: oldItem.estimate_postpone_date,
+            reschedule_remark: oldItem.estimate_postpone_reason,
+            store: store.outlet,
+            business_value: oldItem.business_value,
+          };
+
+          if (pendingOrder.length > 0) {
+            const order = {
+              order_status: "",
+              order_date: "",
+              orderId: "",
+            };
+            newObject.order = order;
+          }
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+    if (RowName == "QC1") {
+      for (let i = 0; i < order.length; i++) {
+        const item = order[i];
+        if (item) {
+          const currentDate = new Date(date);
+          const orderDate = new Date(item.orderDate);
+
+          const qc1CompleteDate = new Date(item.QC_Start);
+          //qc1---------
+          item.QC1 == false &&
+            orderDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? QC1_pending.push(item)
+            : "";
+          item.QC1 == true &&
+            qc1CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? QC1_completed.push(item)
+            : "";
+
+          if (
+            item.enquiry.estimate_created == true &&
+            item.enquiry.status !== "cancelled" &&
+            item.enquiry.status !== "completed"
+          ) {
+            const isQC1Overdue =
+              item.QC1 == false &&
+              currentDate.getTime() - orderDate.getTime() > 48 * 60 * 60 * 1000;
+            isQC1Overdue ? QC1_overdue.push(item) : "";
+          }
+        }
+      }
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < QC1_pending.length; j++) {
+          const oldItem = QC1_pending[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const measurer = await Enquiry_Schedule.findOne({
+            where: { enquiryId: oldItem.id },
+            include: [{ model: User, attributes: ["firstName", "lastName"] }],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+            measurer: measurer.user.firstName + " " + measurer.user.lastName,
+          };
+
+          if (QC1_pending.length > 0) {
+            const order = {
+              order_status: QC1_pending[j].orderStatus,
+              order_date: QC1_pending[j].orderDate,
+              orderId: QC1_pending[j].orderId,
+              sta_received_date: QC1_pending[j].sta_received_date,
+              qc1_complete_date: QC1_pending[j].QC_Start,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < QC1_completed.length; j++) {
+          const oldItem = QC1_completed[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const measurer = await Enquiry_Schedule.findOne({
+            where: { enquiryId: oldItem.id },
+            include: [{ model: User, attributes: ["firstName", "lastName"] }],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+            measurer: measurer.user.firstName + " " + measurer.user.lastName,
+          };
+
+          if (QC1_completed.length > 0) {
+            const order = {
+              order_status: QC1_completed[j].orderStatus,
+              order_date: QC1_completed[j].orderDate,
+              orderId: QC1_completed[j].orderId,
+              sta_received_date: QC1_completed[j].sta_received_date,
+              qc1_complete_date: QC1_completed[j].QC_Start,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < QC1_overdue.length; j++) {
+          const oldItem = QC1_overdue[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const measurer = await Enquiry_Schedule.findOne({
+            where: { enquiryId: oldItem.id },
+            include: [{ model: User, attributes: ["firstName", "lastName"] }],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+            measurer:
+              measurer?.user?.firstName + " " + measurer?.user?.lastName,
+          };
+
+          if (QC1_overdue.length > 0) {
+            const order = {
+              order_status: QC1_overdue[j].orderStatus,
+              order_date: QC1_overdue[j].orderDate,
+              orderId: QC1_overdue[j].orderId,
+              sta_received_date: QC1_overdue[j].sta_received_date,
+              qc1_complete_date: QC1_overdue[j].QC_Start,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+    if (RowName == "QC2") {
+      for (let i = 0; i < order.length; i++) {
+        const item = order[i];
+        if (item) {
+          const currentDate = new Date(date);
+          const orderDate = new Date(item.orderDate);
+
+          const qc1CompleteDate = new Date(item.QC_Start);
+
+          //qc2----------
+          const qc2CompleteDate = new Date(item.QC2_Completed);
+          const timeLimit = 144 * 60 * 60 * 1000;
+          item.QC1 === true &&
+            item.QC2 === false &&
+            qc1CompleteDate >= currentDate - timeLimit
+            ? QC2_pending.push(item)
+            : "";
+          item.QC2 == true &&
+            qc2CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? QC2_completed.push(item)
+            : "";
+
+          if (
+            item.enquiry.estimate_created == true &&
+            item.enquiry.status !== "cancelled" &&
+            item.enquiry.status !== "completed"
+          ) {
+            const isQC2Overdue =
+              item.QC1 == true &&
+              item.QC2 == false &&
+              currentDate.getTime() - qc1CompleteDate.getTime() >
+              144 * 60 * 60 * 1000;
+            isQC2Overdue ? QC2_overdue.push(item) : "";
+          }
+        }
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < QC2_pending.length; j++) {
+          const oldItem = QC2_pending[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+          };
+
+          if (QC2_pending.length > 0) {
+            const order = {
+              order_status: QC2_pending[j].orderStatus,
+              order_date: QC2_pending[j].orderDate,
+              orderId: QC2_pending[j].orderId,
+              qc1_complete_date: QC2_pending[j].QC_Start,
+              qc2_complete_date: QC2_pending[j].QC2_Completed,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < QC2_overdue.length; j++) {
+          const oldItem = QC2_overdue[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+          };
+
+          if (QC2_overdue.length > 0) {
+            const order = {
+              order_status: QC2_overdue[j].orderStatus,
+              order_date: QC2_overdue[j].orderDate,
+              orderId: QC2_overdue[j].orderId,
+              qc1_complete_date: QC2_overdue[j].QC_Start,
+              qc2_complete_date: QC2_overdue[j].QC2_Completed,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < QC2_completed.length; j++) {
+          const oldItem = QC2_completed[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+          };
+
+          if (QC2_completed.length > 0) {
+            const order = {
+              order_status: QC2_completed[j].orderStatus,
+              order_date: QC2_completed[j].orderDate,
+              orderId: QC2_completed[j].orderId,
+              qc1_complete_date: QC2_completed[j].QC_Start,
+              qc2_complete_date: QC2_completed[j].QC2_Completed,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+    if (RowName == "QC3") {
+      for (let i = 0; i < order.length; i++) {
+        const item = order[i];
+        if (item) {
+          const currentDate = new Date(date);
+          const orderDate = new Date(item.orderDate);
+          orderDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? orderCompleted.push(item)
+            : "";
+
+          const qc1CompleteDate = new Date(item.QC_Start);
+          const qc2CompleteDate = new Date(item.QC2_Completed);
+
+          //qc3----------
+          const qc3CompleteDate = new Date(item.QC_Complete);
+          item.QC1 == true &&
+            item.QC2 == true &&
+            item.QC3 == false &&
+            qc2CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? QC3_pending.push(item)
+            : "";
+          item.QC3 == true &&
+            qc3CompleteDate?.toISOString()?.slice(0, 10) ===
+            currentDate?.toISOString()?.slice(0, 10)
+            ? QC3_completed.push(item)
+            : "";
+
+          if (
+            item.enquiry.estimate_created == true &&
+            item.enquiry.status !== "cancelled" &&
+            item.enquiry.status !== "completed"
+          ) {
+            const isQC3Overdue =
+              item.QC1 == true &&
+              item.QC2 == true &&
+              item.QC3 == false &&
+              currentDate.getTime() - qc2CompleteDate.getTime() >
+              72 * 60 * 60 * 1000;
+            isQC3Overdue ? QC3_overdue.push(item) : "";
+          }
+        }
+      }
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < QC3_pending.length; j++) {
+          const oldItem = QC3_pending[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+          };
+
+          if (QC3_pending.length > 0) {
+            const order = {
+              order_status: QC3_pending[j].orderStatus,
+              order_date: QC3_pending[j].orderDate,
+              orderId: QC3_pending[j].orderId,
+              qc1_complete_date: QC3_pending[j].QC_Start,
+              qc2_complete_date: QC3_pending[j].QC2_Completed,
+              qc3_complete_date: QC3_pending[j].QC_Complete,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < QC3_overdue.length; j++) {
+          const oldItem = QC3_overdue[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+          };
+
+          if (QC3_overdue.length > 0) {
+            const order = {
+              order_status: QC3_overdue[j].orderStatus,
+              order_date: QC3_overdue[j].orderDate,
+              orderId: QC3_overdue[j].orderId,
+              qc1_complete_date: QC3_overdue[j].QC_Start,
+              qc2_complete_date: QC3_overdue[j].QC2_Completed,
+              qc3_complete_date: QC3_overdue[j].QC_Complete,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < QC3_completed.length; j++) {
+          const oldItem = QC3_completed[j].enquiry;
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            store: store.outlet,
+          };
+
+          if (QC3_completed.length > 0) {
+            const order = {
+              order_status: QC3_completed[j].orderStatus,
+              order_date: QC3_completed[j].orderDate,
+              orderId: QC3_completed[j].orderId,
+              qc1_complete_date: QC3_completed[j].QC_Start,
+              qc2_complete_date: QC3_completed[j].QC2_Completed,
+              qc3_complete_date: QC3_completed[j].QC_Complete,
+            };
+            newObject.order = order;
+          }
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+
+    if (RowName == "Feedback") {
+      let Feedback_pending = [];
+      let Feedback_completed = [];
+      let Feedback_overdue = [];
+
+      for (let i = 0; i < enquiries.length; i++) {
+        const item = enquiries[i];
+        const condition = item.installer_tasks[item.installer_tasks.length - 1];
+        const currentDate = new Date(date);
+        const completedDate = new Date(item.updatedAt);
+
+        if (!item.feedback && item.status == "completed") {
+          const differenceInMs =
+            currentDate.getTime() - completedDate.getTime();
+          const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+          feedbacks_pending =
+            differenceInDays <= 3 ? Feedback_pending.push(item) : "";
+          feedbacks_overdue =
+            differenceInDays >= 3 ? Feedback_overdue.push(item) : "";
+        }
+
+        if (item.feedback) {
+          if (item.status == "completed") {
+            const completedDate = new Date(item.feedback.createdAt);
+            completedDate?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? Feedback_completed.push(item)
+              : "";
+          }
+        }
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < Feedback_pending.length; j++) {
+          const oldItem = Feedback_pending[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            feedback: oldItem.feedback,
+            updatedAt: oldItem.updatedAt,
+            store: store.outlet,
+          };
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < Feedback_overdue.length; j++) {
+          const oldItem = Feedback_overdue[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            feedback: oldItem.feedback,
+            updatedAt: oldItem.updatedAt,
+            store: store.outlet,
+          };
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < Feedback_completed.length; j++) {
+          const oldItem = Feedback_completed[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            feedback: oldItem.feedback,
+            updatedAt: oldItem.updatedAt,
+            store: store.outlet,
+          };
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+
+    if (RowName == "Complaint") {
+      let complaint_pending = [];
+      let complaint_completed = [];
+      let complaint_overdue = [];
+
+      for (let i = 0; i < enquiries.length; i++) {
+        const item = enquiries[i];
+
+        if (item.complaint_tasks.length > 0) {
+          item.complaint_tasks.forEach((element) => {
+            const complaint_date = element.date
+              ? new Date(element.date)
+              : new Date();
+            const currentDate = new Date(date);
+            const completed_date = new Date(element.updatedAt);
+            const timeLimit = 24 * 60 * 60 * 1000;
+
+            const differenceInMs =
+              currentDate.getTime() - complaint_date.getTime();
+            const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+            if (element.status == "pending" || element.status == "active") {
+              differenceInDays < 2 ? complaint_pending.push(item) : "";
+              differenceInDays >= 2 ? complaint_overdue.push(item) : "";
+            }
+            element.status == "completed" &&
+              completed_date?.toISOString()?.slice(0, 10) ===
+              currentDate?.toISOString()?.slice(0, 10)
+              ? complaint_completed.push(item)
+              : "";
+          });
+        }
+      }
+
+      if (ColumnName == "Pending") {
+        let newArr = [];
+        for (let j = 0; j < complaint_pending.length; j++) {
+          const oldItem = complaint_pending[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            feedback: oldItem.feedback,
+            updatedAt: oldItem.updatedAt,
+            store: store.outlet,
+          };
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+
+      if (ColumnName == "Overdue") {
+        let newArr = [];
+        for (let j = 0; j < complaint_overdue.length; j++) {
+          const oldItem = complaint_overdue[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            feedback: oldItem.feedback,
+            updatedAt: oldItem.updatedAt,
+            store: store.outlet,
+          };
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+      if (ColumnName == "Completed") {
+        let newArr = [];
+        for (let j = 0; j < complaint_completed.length; j++) {
+          const oldItem = complaint_completed[j];
+
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: oldItem.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          const store = await OutletUser.findOne({
+            attributes: [],
+            where: { salesPersonId: oldItem.user.id },
+            include: [
+              {
+                model: User,
+                as: "outlet",
+                attributes: ["firstName", "lastName"],
+              },
+            ],
+          });
+
+          const newObject = {
+            Category_Name: req.query.RowName,
+            id: oldItem.id,
+            enquiryId: oldItem.enquiryId,
+            status: oldItem.status,
+            expected_delivery_date: oldItem.expected_delivery_date,
+            user: oldItem.user,
+            customer: oldItem.customer,
+            createdAt: oldItem.createdAt,
+            products: products,
+            feedback: oldItem.feedback,
+            updatedAt: oldItem.updatedAt,
+            store: store.outlet,
+          };
+
+          newArr.push(newObject);
+        }
+        return res.status(200).json({
+          message: "Data fetched successfully",
+          data: newArr,
+          status: true,
+        });
+      }
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.dashboard = async (req, res, next) => {
+  const fromDate = req.query.fromDate || "";
+  const comingToDate = req.query.toDate || "";
+  const salesId = req.query.salesId || "";
+  const storeId = req.query.storeId || "";
+  const todayDate = moment().startOf("day").format("YYYY-MM-DD");
+
+  const salesPersonIds = [];
+
+  if (req.query.storeId) {
+    const data = await OutletUser.findAll({
+      where: { outletId: req.query.storeId },
+    });
+    data.forEach((element) => {
+      salesPersonIds.push(element.salesPersonId);
+    });
+  } else {
+    const data = await OutletUser.findAll();
+    data.forEach((element) => {
+      salesPersonIds.push(element.salesPersonId);
+    });
+  }
+
+  let userInclude = { model: User };
+
+  if (salesPersonIds.length > 0) {
+    userInclude.where = { id: { [Op.in]: salesPersonIds } };
+  } else if (salesPersonIds.length === 0) {
+    userInclude.where = { id: null };
+  }
+
+  let toDate = "";
+  if (comingToDate) {
+    const setToDate = new Date(comingToDate);
+    setToDate.setDate(setToDate.getDate() + 1);
+    toDate = setToDate?.toISOString()?.split("T")[0];
+  }
+
+  let complaint;
+  let wcr;
+  const filter = {};
+  if (toDate && fromDate) {
+    filter.createdAt = { [Op.gte]: fromDate, [Op.lte]: toDate };
+
+    const enquiry_complaint = await ComplaintTask.count({
+      where: { createdAt: { [Op.gte]: fromDate, [Op.lte]: toDate } },
+      include: [
+        {
+          model: Enquiry,
+          where: { salesId: { [Op.in]: salesPersonIds } },
+          include: [User],
+        },
+      ],
+    });
+    wcr = await Wcr_Report.count({
+      where: { createdAt: { [Op.gte]: fromDate, [Op.lte]: toDate } },
+      include: [
+        {
+          model: Enquiry,
+          where: { salesId: { [Op.in]: salesPersonIds } },
+          include: [User],
+        },
+      ],
+    });
+    const customer_complaint = await ComplaintTask.count({
+      where: { enquiryId: null },
+    });
+
+    complaint = enquiry_complaint + customer_complaint;
+  } else {
+    const enquiry_complaint = await ComplaintTask.count({
+      include: [
+        {
+          model: Enquiry,
+          where: { salesId: { [Op.in]: salesPersonIds } },
+          include: [User],
+        },
+      ],
+    });
+    wcr = await Wcr_Report.count({
+      include: [
+        {
+          model: Enquiry,
+          where: { salesId: { [Op.in]: salesPersonIds } },
+          include: [User],
+        },
+      ],
+    });
+    const customer_complaint = await ComplaintTask.count({
+      where: { enquiryId: null },
+    });
+
+    complaint = enquiry_complaint + customer_complaint;
+  }
+  const order = await Order.count({
+    where: { orderStatus: { [Op.in]: ["pending", "accepted"] } },
+    include: [
+      {
+        model: Enquiry,
+        where: {
+          salesId: { [Op.in]: salesPersonIds },
+          status: { [Op.notIn]: ["completed", "cancelled"] },
+        },
+      },
+    ],
+  });
+
+  const enquiry = await Enquiry.findAll({
+    where: filter,
+    include: [
+      userInclude,
+      { model: Enquiry_Schedule },
+      { model: InstallerTasks },
+      { model: Order },
+      { model: Feedback },
+    ],
+  });
+
+  const today_measurement = enquiry.filter(
+    (enq) =>
+      enq.enquiryschedules.length > 0 &&
+      enq.enquiryschedules[0].date == todayDate,
+  );
+  const today_installaiton = enquiry.filter(
+    (enq) =>
+      enq.installer_tasks.length > 0 &&
+      enq.installer_tasks[0].date == todayDate,
+  );
+
+  let overdue_qc = 0;
+  for (let i = 1; i <= 3; i++) {
+    let qcWhereCondition = {};
+    const baseEnquiryWhere = {
+      "$enquiry.estimate_created$": true,
+      "$enquiry.status$": { [Op.notIn]: ["cancelled", "completed"] },
+    };
+    if (i == 1) {
+      qcWhereCondition = {
+        ...baseEnquiryWhere,
+        QC1: false,
+        [Op.and]: Sequelize.literal(
+          `TIMESTAMPDIFF(HOUR, orderDate, NOW()) > 48`,
+        ),
+      };
+    } else if (i == 2) {
+      qcWhereCondition = {
+        ...baseEnquiryWhere,
+        QC1: true,
+        QC2: false,
+        [Op.and]: Sequelize.literal(
+          `TIMESTAMPDIFF(HOUR, QC_Start, NOW()) > 144`,
+        ),
+      };
+    } else if (i == 3) {
+      qcWhereCondition = {
+        ...baseEnquiryWhere,
+        QC1: true,
+        QC2: true,
+        QC3: false,
+        [Op.and]: Sequelize.literal(
+          `TIMESTAMPDIFF(HOUR, QC2_Completed, NOW()) > 72`,
+        ),
+      };
+    }
+    const enquiries = await Order.findAll({
+      where: qcWhereCondition,
+      include: [
+        {
+          model: Enquiry,
+          required: true,
+        },
+      ],
+    });
+    overdue_qc = overdue_qc + enquiries.length;
+  }
+
+  const completed = enquiry.filter((enq) => enq.status === "completed");
+  const cancelled = enquiry.filter((enq) => enq.status === "cancelled");
+  const open_enquiry = enquiry.filter(
+    (enq) => enq.status !== "completed" && enq.status !== "cancelled",
+  );
+  const business_value = enquiry.reduce(
+    (total, enq) =>
+      total + (enq.business_value ? parseInt(enq.business_value) : 0),
+    0,
+  );
+
+  const new_enquiry = enquiry.filter((enq) => enq.status === "fresh");
+
+  let feedbacksOverdue = 0;
+  const currentDate = new Date();
+  completed.forEach((item) => {
+    if (!item.feedback) {
+      const completedDate = new Date(item.updatedAt);
+      const differenceInMs = currentDate.getTime() - completedDate.getTime();
+      const differenceInDays = differenceInMs / (1000 * 60 * 60 * 24);
+
+      feedbacksOverdue =
+        differenceInDays >= 3 ? feedbacksOverdue + 1 : feedbacksOverdue;
+    }
+  });
+
+  const obj = {
+    totalEnquiry: {
+      business_value: business_value,
+      new_enquiry: new_enquiry.length,
+      enquiry: enquiry.length,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/storewise-total?fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+      view_url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/storewise-all-enquiry?fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+      open_enquiry: open_enquiry.length,
+    },
+    pending_order: {
+      order: order,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/material-receiving-report?fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+    },
+    completedEnquiry: {
+      enquiry: completed.length,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/installer-installation-completed?fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+      view_url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/installation-completed-list?fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+    },
+    totalComplaints: {
+      enquiry: complaint,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/customer-complaints-excel?fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+      view_url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/customer-complaints-excel?type=list&fromDate=${fromDate}&toDate=${toDate}&salesId=${salesId}&storeId=${storeId}`,
+    },
+    feedback: {
+      enquiry: feedbacksOverdue,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/feedback-excel?fromDate=${fromDate}&toDate=${toDate}`,
+      view_url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/feedback-excel?type=list&fromDate=${fromDate}&toDate=${toDate}`,
+    },
+    cancelledEnquiry: {
+      enquiry: cancelled.length,
+      report: false,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/storewise-cancelled?fromDate=${fromDate}&toDate=${toDate}`,
+      view_url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/storewise-cancelled-list?fromDate=${fromDate}&toDate=${toDate}`,
+    },
+    overdueQc: {
+      enquiry: overdue_qc,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/store-wise-QcReport`,
+    },
+    today_measurement: {
+      enquiry: today_measurement.length,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/storewise-measurement-aging?fromDate=${fromDate}&toDate=${toDate}`,
+    },
+    toady_installation: {
+      enquiry: today_installaiton.length,
+      report: true,
+      url: `${process.env.LOCAL_URL_EXCEL}api/v1/superadmin/storewise-installation-aging?fromDate=${fromDate}&toDate=${toDate}`,
+    },
+  };
+  return res.status(200).json({
+    message: "Notificaiton send successfully",
+    data: obj,
+    status: true,
+  });
+};
+
+exports.check_notification = async (req, res, next) => {
+  const obj = {
+    name: "vikram",
+    message: "test",
+  };
+  await send_notification(
+    "dHSKTbGgdWDyu3Zw5KFlB5:APA91bHVSOtS3E-conqaKah-XBHhKbJEDFKgmDFapzP4JxzyOc8OgV36EVQ7-88Lpjoggyk3A7PqUvHynz2fO57ztsJIeDeIBChWHSuC9grz9wUc28Go2VJWl_jjqHhgmTLejOugxDdl",
+    "New test message",
+    obj,
+  );
+
+  return res.status(200).json({
+    message: "Notificaiton send successfully",
+    data: [],
+    status: true,
+  });
+};
+
+exports.createUser = async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const { file, body } = await UploadFile(req, "/assets");
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [{ phone: req.body.phone }, { email: req.body.email }],
+        type: req.body.type,
+      },
+    });
+    if (user) {
+      return res.status(400).json({
+        message: "User Already Exists",
+        status: false,
+      });
+    }
+    if (body.type == "sales-person") {
+      const hashedPassword = await bcryptjs.hash(req.body.password, 12);
+      const newUser = await User.create(
+        {
+          userId: body.userId,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          phone: body.phone,
+          email: body.email,
+          password: hashedPassword,
+          type: body.type,
+          image: file.path,
+        },
+        { transaction: t },
+      );
+
+      await OutletUser.create(
+        {
+          outletId: req.body.outletId,
+          salesPersonId: newUser.dataValues.id,
+        },
+        { transaction: t },
+      );
+
+      await t.commit();
+
+      return res.status(200).json({
+        message: `New ${newUser.type} Created`,
+        data: newUser,
+        status: true,
+      });
+    } else {
+      const hashedPassword = await bcryptjs.hash(req.body.password, 12);
+      const newUser = await User.create(
+        {
+          userId: body.userId,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          phone: body.phone,
+          email: body.email,
+          password: hashedPassword,
+          type: body.type,
+          image: file.path,
+          vendorId: req.body.vendorId,
+        },
+        { transaction: t },
+      );
+
+      if (body.type == "outlet") {
+        await OutletAddress.create(
+          {
+            street: req.body.street,
+            city: req.body.city,
+            state: req.body.state,
+            pincode: req.body.pincode,
+            userId: newUser.dataValues.id,
+          },
+          { transaction: t },
+        );
+      }
+
+      await t.commit();
+      res.status(200).json({
+        message: `New ${newUser.type} Created`,
+        data: newUser,
+        status: true,
+      });
+    }
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    await t.rollback();
+    next(err);
+  }
+};
+exports.getAllOutlet = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+
+    const outlet = await User.findAll({
+      where: { type: "outlet", isblocked: false },
+      include: { model: OutletAddress, as: "outletAddress" },
+    });
+
+    res.status(200).json({
+      message: "outlet Fetched Successfully",
+      data: outlet,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getAOutlet = async (req, res, next) => {
+  try {
+    const users = await OutletUser.findAll({
+      where: { outletId: req.params.outletId },
+    });
+    if (users.length == 0) {
+      return res.status(200).json({
+        message: "No outlet Found",
+        status: false,
+      });
+    }
+
+    const arr = [];
+
+    for (let i = 0; i < users.length; i++) {
+      const user = await User.findOne({
+        where: { id: users[i].salesPersonId },
+      });
+      arr.push(user);
+    }
+    const obj = {
+      outlet: await User.findOne({ where: { id: req.params.outletId } }),
+      ic: arr,
+    };
+
+    res.status(200).json({
+      message: "outlet data Fetched Successfully",
+      data: obj,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getAOutletCustomers = async (req, res, next) => {
+  try {
+    const outlet = await User.findOne({ where: { id: req.params.id } });
+    const sales = await OutletUser.findAll({ where: { outletId: outlet.id } });
+
+    let arr = [];
+    for (var i = 0; i < sales.length; i++) {
+      const searchName = req.query.searchName;
+      const salesPerson = await Customer.findAll({
+        where: {
+          salesId: sales[i].salesPersonId,
+          ...(searchName && {
+            [Op.or]: [
+              sequelize.where(
+                sequelize.fn(
+                  "CONCAT",
+                  sequelize.col("firstName"),
+                  " ",
+                  sequelize.col("lastName"),
+                ),
+                "LIKE",
+                `%${searchName}%`,
+              ),
+              sequelize.where(
+                sequelize.fn(
+                  "CONCAT",
+                  sequelize.col("lastName"),
+                  " ",
+                  sequelize.col("firstName"),
+                ),
+                "LIKE",
+                `%${searchName}%`,
+              ),
+            ],
+          }),
+        },
+        include: {
+          model: Enquiry,
+          include: [EnquiryStatus, Room],
+        },
+      });
+
+      for (var j = 0; j < salesPerson.length; j++) {
+        arr.push(salesPerson[j]);
+      }
+    }
+
+    // Pagination
+    const page = parseInt(req.query.page) || 1; // Current page number
+    const limit = parseInt(req.query.limit) || 10; // Number of items per page
+    const startIndex = (page - 1) * limit; // Starting index of items in the array
+    const endIndex = startIndex + limit; // Ending index of items in the array
+    const totalItems = arr.length;
+
+    const paginatedArr = arr.slice(startIndex, endIndex);
+
+    res.status(200).json({
+      message: "Outlet data fetched successfully",
+      data: paginatedArr,
+      pages: Math.ceil(totalItems / limit),
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getAOutletIC = async (req, res, next) => {
+  try {
+    // const admin = await User.findOne({ where: { id: req.userId, type: "super-admin" } });
+    // dataNotFound(admin, 400, "Not Authorized");
+
+    const outlet = await User.findOne({ where: { id: req.params.id } });
+
+    const sales = await OutletUser.findAll({
+      where: { outletId: outlet.id },
+      include: { all: true },
+    });
+    const salesPerson = [];
+    sales.map((item) => {
+      delete item.dataValues.outlet;
+
+      const user = {
+        id: item.dataValues.sales_person.dataValues.id,
+        userId: item.dataValues.sales_person.dataValues.userId,
+        firstName: item.dataValues.sales_person.dataValues.firstName,
+        lastName: item.dataValues.sales_person.dataValues.lastName,
+        phone: item.dataValues.sales_person.dataValues.phone,
+        email: item.dataValues.sales_person.dataValues.email,
+        image: item.dataValues.sales_person.dataValues.image,
+      };
+
+      salesPerson.push(user);
+    });
+    res.status(200).json({
+      message: "outlet data Fetched Successfully",
+      data: salesPerson,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getAOutletEnquiry = async (req, res, next) => {
+  try {
+    const outlet = await OutletUser.findAll({
+      where: { outletId: req.params.id },
+      include: [
+        { model: User, as: "sales-person" },
+        { model: User, as: "outlet" },
+      ],
+    });
+    if (outlet.length == 0) {
+      return res.status(200).json({
+        message: "No outlet Found",
+        status: false,
+      });
+    }
+    let arr = [];
+    for (var i = 0; i < outlet.length; i++) {
+      const enquiry = await Enquiry.findAll({
+        where: {
+          salesId: outlet[i].salesPersonId,
+        },
+        include: [EnquiryStatus, Customer],
+        order: [["id", "DESC"]],
+      });
+      for (var j = 0; j < enquiry.length; j++) {
+        arr.push(enquiry[j]);
+      }
+    }
+
+    res.status(200).json({
+      message: "outlet data Fetched Successfully",
+      data: arr,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getAEnquiryStatus = async (req, res, next) => {
+  try {
+    const enquiry = await EnquiryStatus.findAll({
+      where: { enquiryId: req.params.id },
+    });
+
+    res.status(200).json({
+      message: "outlet data Fetched Successfully",
+      data: enquiry,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.deleteUser = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+
+    const user = await User.findOne({ where: { id: req.params.id } });
+    dataNotFound(user, 404, "No User Found");
+
+    await user.destroy();
+    res.status(200).json({
+      message: "User deleted Successfully",
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getAllUser = async (req, res, next) => {
+  try {
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const salesPersonIds = [];
+    let stores;
+
+    if (req.query.type == "sales-person") {
+      if (salesPersonIdFromQuery) {
+        salesPersonIds.push(salesPersonIdFromQuery);
+      } else {
+        if (req.query.storeId) {
+          stores = await User.findAll({ where: { id: req.query.storeId } });
+        } else {
+          stores = await User.findAll({ where: { type: "outlet" } });
+        }
+        dataNotFound(stores[0], 404, "Store Not Found");
+
+        for (let i = 0; i < stores.length; i++) {
+          const store = stores[i];
+          const storeSalesPersons = await OutletUser.findAll({
+            where: { outletId: store.id },
+          });
+
+          for (let j = 0; j < storeSalesPersons.length; j++) {
+            const storeSalesPerson = storeSalesPersons[j];
+
+            if (storeSalesPerson) {
+              salesPersonIds.push(storeSalesPerson.dataValues.salesPersonId);
+            }
+          }
+        }
+      }
+    }
+
+    const where = {};
+    if (req.query.status) {
+      where.isblocked = req.query.status;
+    }
+
+    if (req.query.search) {
+      where[Op.or] = [
+        sequelize.where(
+          sequelize.fn(
+            "CONCAT",
+            sequelize.col("firstName"),
+            " ",
+            sequelize.col("lastName"),
+          ),
+          "LIKE",
+          `%${req.query.search}%`,
+        ),
+        sequelize.where(
+          sequelize.fn(
+            "CONCAT",
+            sequelize.col("lastName"),
+            " ",
+            sequelize.col("firstName"),
+          ),
+          "LIKE",
+          `%${req.query.search}%`,
+        ),
+      ];
+    }
+
+    if (req.query.type) {
+      let user;
+      if (req.query.type == "sales-person") {
+        user = await User.findAll({
+          where: {
+            ...where,
+            type: req.query.type,
+            id: { [Op.in]: salesPersonIds },
+          },
+          order: [["isblocked", "ASC"]],
+        });
+      } else {
+        user = await User.findAll({
+          where: { ...where, type: req.query.type },
+          order: [["isblocked", "ASC"]],
+        });
+      }
+
+      return res.status(200).json({
+        message: "User Fetched Successfully",
+        data: user,
+        status: true,
+      });
+    }
+    const user = await User.findAll({ where });
+
+    res.status(200).json({
+      message: "User Fetched Successfully",
+      data: user,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getUser = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    // dataNotFound(admin, 400, "Not Authorized");
+    const user = await User.findOne({ where: { id: req.params.id } });
+
+    if (user.type == "sales-person") {
+      const obj = {
+        user,
+        Enquiry: await Enquiry.findAll({
+          where: { salesId: req.params.id },
+          include: [EnquiryStatus, Customer],
+        }),
+        outlet: await OutletUser.findOne({
+          where: { salesPersonId: req.params.id },
+          include: { model: User, as: "outlet" },
+        }),
+        totalEnquiry: await Enquiry.count({
+          where: { salesId: req.params.id },
+        }),
+        inprogressEnquiry: await Enquiry.count({
+          where: {
+            status: { [Op.notIn]: ["cancelled", "completed", "fresh"] },
+            salesId: req.params.id,
+          },
+        }),
+        freshEnquiry: await Enquiry.count({
+          where: { status: "fresh", salesId: req.params.id },
+        }),
+        completedEnquiry: await Enquiry.count({
+          where: { status: "completed", salesId: req.params.id },
+        }),
+        cancelledEnquiry: await Enquiry.count({
+          where: { status: "cancelled", salesId: req.params.id },
+        }),
+      };
+      return res.status(200).json({
+        message: "User Fetched Successfully",
+        data: obj,
+        status: true,
+      });
+    }
+
+    res.status(200).json({
+      message: "User Fetched Successfully",
+      data: user,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.editUser = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "/assets");
+
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+
+    const user = await User.findOne({ where: { id: req.params.id } });
+
+    const hashedPassword = await bcryptjs.hash(req.body.password, 12);
+    user.firstName = body.firstName ? body.firstName : user.firstName;
+    user.lastName = body.lastName ? body.lastName : user.lastName;
+    user.phone = body.phone ? parseInt(body.phone) : user.phone;
+    user.email = body.email ? body.email : user.email;
+    user.password = req.body.password ? hashedPassword : user.password;
+    user.type = body.type ? body.type : user.type;
+    user.userId = body.userId ? body.userId : user.userId;
+    if (file) {
+      removefile(user.image);
+    }
+    user.image = file ? file.path : user.image;
+
+    await user.save();
+    await user.reload();
+
+    if (user.type == "sales-person") {
+      if (req.body.outletId) {
+        await OutletUser.update(
+          {
+            outletId: req.body.outletId,
+          },
+          { where: { salesPersonId: user.id } },
+        );
+      }
+    }
+
+    res.status(200).json({
+      message: "User Fetched Successfully",
+      data: user,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getAllCustomer = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.pageNo) || 1;
+    const perPage = parseInt(req.query.pageSize) || 16862;
+    const fullName = req.query.fullName || "";
+
+    const offset = (page - 1) * perPage;
+
+    const customer = await Customer.findAndCountAll({
+      include: [Address, Enquiry],
+      where: {
+        [Op.or]: [
+          {
+            [Op.or]: [
+              sequelize.where(
+                sequelize.fn(
+                  "CONCAT",
+                  sequelize.col("firstName"),
+                  " ",
+                  sequelize.col("lastName"),
+                  sequelize.col("primary_phone"),
+                ),
+                "LIKE",
+                `%${fullName}%`,
+              ),
+              sequelize.where(
+                sequelize.fn(
+                  "CONCAT",
+                  sequelize.col("lastName"),
+                  " ",
+                  sequelize.col("firstName"),
+                  sequelize.col("primary_phone"),
+                ),
+                "LIKE",
+                `%${fullName}%`,
+              ),
+            ],
+          },
+        ],
+      },
+      limit: perPage,
+      offset: offset,
+      replacements: {
+        fullName: `%${fullName}%`,
+      },
+    });
+
+    res.status(200).json({
+      message: "Customers Fetched Successfully",
+      data: customer.rows,
+      pageInfo: {
+        count: customer.count,
+        currentPage: page,
+        totalPage: Math.ceil(customer.count / perPage),
+      },
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getCustomer = async (req, res, next) => {
+  try {
+    const status_where = {};
+    if (req.query.status) {
+      status_where.status = req.query.status;
+    }
+
+    const customer = await Customer.findOne({
+      where: { id: req.params.id },
+      include: [
+        Address,
+        {
+          model: Enquiry,
+          where:
+            Object.keys(status_where).length > 0
+              ? { ...status_where }
+              : undefined,
+          include: [
+            EnquiryStatus,
+            {
+              model: Room,
+              include: [{ model: SelectedMaterial, include: Material }],
+            },
+          ],
+        },
+      ],
+      order: [[{ model: Enquiry }, "id", "DESC"]],
+    });
+
+    if (customer && customer.enquiries.length > 0) {
+      for (var i = 0; i < customer.enquiries.length; i++) {
+        const enq = customer.enquiries[i];
+
+        const outletUser = await OutletUser.findOne({
+          where: { salesPersonId: enq.salesId },
+        });
+        let outlet;
+        if (outletUser) {
+          outlet = await User.findOne({
+            where: { id: outletUser.outletId },
+            attributes: ["id", "firstName", "phone", "email"],
+          });
+
+          enq.dataValues.outlet = outlet;
+        }
+
+        const products = [];
+        const selectedmaterial = await SelectedMaterial.findAll({
+          where: { enquiryId: enq.id },
+          include: [Material],
+        });
+
+        for (const i of selectedmaterial) {
+          const materials = await Material.findOne({
+            where: { id: i.materialId },
+          });
+          if (!products.includes(materials.name)) {
+            products.push(materials.name);
+          }
+        }
+
+        enq.dataValues.products = products;
+      }
+    }
+    res.status(200).json({
+      message: "Customer Fetched Successfully",
+      data: customer,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.editCustomerDetails = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+    const customer = await Customer.findOne({
+      where: { id: req.params.id },
+      include: [Address, { model: Enquiry, include: EnquiryStatus }],
+    });
+
+    ((customer.firstName = req.body.firstName),
+      (customer.lastName = req.body.lastName),
+      (customer.primary_phone = req.body.primary_phone),
+      (customer.secondary_phone = req.body.secondary_phone),
+      (customer.primary_email = req.body.primary_email),
+      (customer.secondary_email = req.body.secondary_email),
+      (customer.companyName = req.body.companyName),
+      (customer.GST = req.body.GST),
+      (customer.type = req.body.type),
+      (customer.salesId = req.body.salesId));
+
+    await customer.save();
+    await customer.reload();
+    res.status(200).json({
+      message: "Customer details Updated Successfully",
+      data: customer,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.editCustomerAddress = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+
+    const address = await Address.findOne({ where: { id: req.params.id } });
+
+    address.contactPerson = req.body.contactPerson;
+    address.street = req.body.street;
+    address.state = req.body.state;
+    address.pincode = req.body.pincode;
+    address.type = req.body.type;
+    address.contactNumber = req.body.contactNumber;
+
+    await address.save();
+    await address.reload();
+
+    res.status(200).json({
+      message: "Customer Address Updated Successfully",
+      data: address,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getAllEnquiries = async (req, res, next) => {
+  try {
+    const data = await Enquiry.findAndCountAll({
+      where: {
+        status: req.query.status
+          ? req.query.status
+          : { [Op.or]: ["fresh", "completed", "inprogress"] },
+      },
+    });
+    let page = req.query.page; // page number
+    let limit = 20; // number of records per page
+    let pages = Math.ceil(data.count / limit);
+
+    if (req.query.page) {
+      let offset = 0;
+
+      offset = limit * (page - 1);
+
+      const enquiries = await Enquiry.findAll({
+        where: {
+          status: req.query.status
+            ? req.query.status
+            : { [Op.or]: ["fresh", "completed", "inprogress"] },
+        },
+        include: [EnquiryStatus, Customer],
+        order: [["id", "DESC"]],
+        limit: limit,
+        offset: offset,
+      });
+
+      return res.status(200).json({
+        message: "Enquiries Fetched Successfully",
+        data: enquiries,
+        status: true,
+        pages: pages,
+        currentPage: page,
+      });
+    } else {
+      const enquiries = await Enquiry.findAll({
+        include: [EnquiryStatus, Customer],
+        order: [["id", "DESC"]],
+      });
+      enquiries.map((item) => {
+        if (item.status == "fresh" || item.status == "inprogess") {
+          item.dataValues.pending_enquiry = true;
+        } else {
+          item.dataValues.pending_enquiry = false;
+        }
+      });
+      res.status(200).json({
+        message: "Enquiries Fetched Successfully",
+        data: enquiries,
+        status: true,
+        pages: pages,
+      });
+    }
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getEnquiry = async (req, res, next) => {
+  try {
+    const enquiry = await Enquiry.findOne({
+      where: { id: req.params.id },
+      include: [
+        Customer,
+        EnquiryStatus,
+        {
+          model: Room,
+          include: [
+            MaterialImage,
+            {
+              model: RoomAsset,
+              include: [Media, CeilingType, WallType, Ladder, CurtainOperation],
+            },
+
+            { model: SelectedMaterial, include: Material },
+            {
+              model: SelectedCurtain,
+              include: [
+                { model: CurtainFabric, as: "fabric1" },
+                { model: CurtainFabric, as: "mock_fabric" },
+                Liniing,
+                LiningFabric,
+                { model: CurtainFabric, as: "belt" },
+                { model: CurtainFabric, as: "beltBorder" },
+                { model: CurtainFabric, as: "beltPiping" },
+                { model: BeltType },
+                BorderType,
+                { model: CurtainFabric, as: "p_border" },
+                { model: CurtainFabric, as: "s_border" },
+                { model: CurtainFabric, as: "pelmet" },
+                { model: PelmetType },
+                { model: CurtainFabric, as: "fabric2" },
+                CurtainPattern,
+                { model: CurtainStyle, as: "curtain_fabric_style" },
+                { model: CurtainStyle, as: "mock_style" },
+                { model: Gathering, as: "mockFabric_gathering" },
+                { model: Gathering, as: "fabricGathering" },
+              ],
+            },
+
+            {
+              model: SelectedSheer,
+              include: [
+                {
+                  model: CurtainFabric,
+                  include: { model: Book, include: Brand },
+                },
+                { model: CurtainStyle, as: "sheerStyle" },
+                { model: Gathering, as: "GatheredSheer" },
+              ],
+            },
+            {
+              model: SelectedTrack,
+              include: [
+                { model: Motorized_track, as: "primaryTrack" },
+                { model: Motorized_track, as: "secondaryTrack" },
+                { model: Motorized_track, as: "mockTrack" },
+                { model: Track, as: "primaryTrackType" },
+                { model: Track, as: "secondaryTrackType" },
+                { model: Track, as: "mockTrackType" },
+                BracketSize,
+                ScrewSize,
+                { model: TieKnob, as: "primary_track_tieknob" },
+                { model: TieKnob, as: "secondary_track_tieknob" },
+                { model: TieKnob, as: "mock_track_tieknob" },
+              ],
+            },
+            {
+              model: SelectedRod,
+              include: [
+                TieKnob,
+                Finial,
+                { model: RodType, as: "primaryRod" },
+                { model: RodType, as: "secondaryRod" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    // //console.log()
+    const billingAddress = await Address.findOne({
+      where: { customerId: enquiry.customer.id, type: "billing" },
+    });
+    const deliveryAddress = await Address.findOne({
+      where: { customerId: enquiry.customer.id, type: "delivery" },
+    });
+
+    const enq_schedule = await Enquiry_Schedule.findOne({
+      where: { enquiryId: req.params.id },
+      include: [
+        {
+          model: Schedule,
+        },
+        {
+          model: User,
+        },
+      ],
+    });
+
+    res.status(200).json({
+      message: "Enquiry Fetched Successfully",
+      data: enquiry,
+      billingAddress: billingAddress,
+      deliveryAddress: deliveryAddress,
+      EnquirySchedule: enq_schedule,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.editEnquiryStatus = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+    const enquiry = await EnquiryStatus.findOne({
+      where: { id: req.params.id },
+    });
+
+    enquiry.status = req.body.status;
+    await enquiry.save();
+    await enquiry.reload();
+
+    res.status(200).json({
+      message: "Enquiry status Updated Successfully",
+      data: enquiry,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getRoles = async (req, res, next) => {
+  try {
+    const arr = [
+      "super-admin",
+      "outlet-manager",
+      "sales-person",
+      "dispatch-team",
+      "outlet",
+      "stitching-store-manager",
+      "measurer",
+      "tailor",
+      "qc",
+      "installer",
+    ];
+    res.status(200).json({
+      message: "Roles fetched",
+      data: arr,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.createSchedule = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+
+    for (var i = 0; i < req.body.length; i++) {
+      const schedule = await Schedule.findOne({
+        where: {
+          [Op.and]: [
+            { start_time: req.body[i].Stime, end_time: req.body[i].Etime },
+          ],
+        },
+      });
+
+      if (schedule) {
+        return res.status(400).json({
+          message: "Schedule Already Exists",
+          status: false,
+        });
+      }
+
+      await Schedule.create({
+        start_time: req.body[i].Stime,
+        end_time: req.body[i].Etime,
+        type: req.body[i].type ? req.body[i].type : null,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Schedule Created Successfully",
+      data: [],
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getSchedule = async (req, res, next) => {
+  try {
+    if (req.query.type) {
+      const schedule = await Schedule.findAll({
+        where: { type: req.query.type },
+      });
+      return res.status(200).json({
+        message: "Schedule Fetched Successfully",
+        data: schedule,
+        status: true,
+      });
+    }
+    const schedule = await Schedule.findAll();
+
+    res.status(200).json({
+      message: "Schedule Fetched Successfully",
+      data: schedule,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.updateSchedule = async (req, res, next) => {
+try {
+const admin = await User.findOne({
+where: { id: req.userId, type: "super-admin" },
+});
+dataNotFound(admin, 400, "Not Authorized");
+
+const schedule = await Schedule.findOne({
+where: { id: req.params.id },
+});
+dataNotFound(schedule, 400, "Schedule Not found");
+
+const start_time =
+req.body.start_time || req.body.Stime || schedule.start_time;
+const end_time = req.body.end_time || req.body.Etime || schedule.end_time;
+const type = req.body.type || schedule.type;
+
+if (!["installer", "measurer"].includes(type)) {
+return res.status(400).json({
+message: "Invalid type. Choose installer or measurer",
+status: false,
+});
+}
+
+if (!start_time || !end_time) {
+return res.status(400).json({
+message: "start_time and end_time are required",
+status: false,
+});
+}
+
+if (start_time >= end_time) {
+return res.status(400).json({
+message: "start_time must be less than end_time",
+status: false,
+});
+}
+
+const duplicate = await Schedule.findOne({
+where: {
+[Op.and]: [
+{ start_time, end_time, type },
+{ id: { [Op.ne]: req.params.id } },
+],
+},
+});
+
+if (duplicate) {
+return res.status(400).json({
+message: "Schedule Already Exists",
+status: false,
+});
+}
+
+await schedule.update({
+start_time,
+end_time,
+type,
+});
+
+return res.status(200).json({
+message: "Schedule Updated Successfully",
+data: schedule,
+status: true,
+});
+} catch (err) {
+if (!err.statusCode) {
+err.statusCode = 500;
+}
+next(err);
+}
+};
+
+const fabricCategory = ["Curtains", "sheers", "Rods/tracks", "Blinds"];
+const wallpaperCategory = ["Wallpaper"];
+const upholestryCategory = ["Upholstery", "Other"];
+const flooringCategory = ["Flooring/Carpet"];
+const otherCategory = ["Other"];
+
+exports.get_unassign_user = async (req, res, next) => {
+  try {
+    const categories = req.body.categories;
+
+    const store = await User.findByPk(req.body.storeId);
+    dataNotFound(store, "store not found", 400);
+
+    let usedCategory = "";
+
+    if (categories.every((category) => fabricCategory.includes(category))) {
+      usedCategory = "fabricCategory";
+    }
+    if (categories.every((category) => wallpaperCategory.includes(category))) {
+      usedCategory = "wallpaperCategory";
+    }
+    if (categories.every((category) => upholestryCategory.includes(category))) {
+      usedCategory = "upholestryCategory";
+    }
+    if (categories.every((category) => flooringCategory.includes(category))) {
+      usedCategory = "flooringCategory";
+    }
+    if (categories.every((category) => otherCategory.includes(category))) {
+      usedCategory = "otherCategory";
+    }
+
+    const enquirySchedule = await Enquiry_Schedule.findAll({
+      where: { schedulePersonId: { [Op.in]: [60, 66, 144, 176] } },
+      order: [["createdAt", "DESC"]],
+      limit: 1,
+    });
+    const schedulePersonId =
+      enquirySchedule.length > 0 ? enquirySchedule[0].schedulePersonId : null;
+
+    const fabricSchedule = await Enquiry_Schedule.findAll({
+      where: { schedulePersonId: { [Op.in]: [174, 58] } },
+      order: [["createdAt", "DESC"]],
+      limit: 1,
+    });
+    const fabricSchedulePersonId =
+      fabricSchedule.length > 0 ? fabricSchedule[0].schedulePersonId : null;
+
+    const getMeasurerIds = (storeId, usedCategory) => {
+      const measurerMap = {
+        22: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: getWallPaperIds(schedulePersonId),
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // DLF
+        81: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: [61],
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // GH
+        42: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: getWallPaperIds(schedulePersonId),
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // HOCS
+        79: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: [61],
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // WM
+        80: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: getWallPaperIds(schedulePersonId),
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // KN
+        179: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: [61],
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // FandF Project dpak
+        83: {
+          fabricCategory: getFabricCategoryIds(fabricSchedulePersonId),
+          wallpaperCategory: [61],
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // ludhiyana
+        82: {
+          fabricCategory: [126],
+          wallpaperCategory: [145],
+          upholestryCategory: [128],
+          flooringCategory: [126],
+          otherCategory: [58],
+        }, // PKL
+        162: {
+          fabricCategory: [192],
+          wallpaperCategory: getWallPaperIds(schedulePersonId),
+          upholestryCategory: getUpholestryIds(schedulePersonId),
+          flooringCategory: [39],
+          otherCategory: [58],
+        }, // NOIDA
+      };
+
+      return measurerMap[storeId] && measurerMap[storeId][usedCategory]
+        ? measurerMap[storeId][usedCategory]
+        : [];
+    };
+
+    const getUpholestryIds = (schedulePersonId) => {
+      const idMap = {
+        60: [66],
+        66: [144],
+        144: [176],
+        // 176: [59],
+        // 59: [170],
+        176: [60],
+      };
+      return idMap[schedulePersonId] || [60];
+    };
+
+    const getWallPaperIds = (schedulePersonId) => {
+      const idMap = {
+        61: [202],
+        202: [61],
+      };
+      return idMap[schedulePersonId] || [61];
+    };
+
+    const getFabricCategoryIds = (schedulePersonId) => {
+      const idMap = {
+        58: [174],
+        174: [58],
+      };
+      return idMap[schedulePersonId] || [58];
+    };
+
+    const measurerIds = getMeasurerIds(store.id, usedCategory);
+
+    const data = await User.findAll({
+      where: { type: "measurer", id: { [Op.in]: measurerIds } },
+    });
+
+    return res.status(200).json({
+      message: "Schedule Fetched Successfully",
+      data: data,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 400;
+    }
+    next(err);
+  }
+};
+
+exports.get_unassign_timeslot = async (req, res, next) => {
+  try {
+    const user = await User.findOne({
+      where: { id: req.params.userid, type: "measurer" },
+    });
+    if (!user) throw new Error("User not found");
+    console.log(user.id, req.query);
+
+    const find = await Enquiry_Schedule.findAll({
+      where: {
+        date: req.query.date,
+        schedulePersonId: user.id,
+        status: "pending",
+      },
+    });
+
+    let val = [];
+
+    const findPostpone = await Enquiry_Schedule.findAll({
+      where: {
+        postpone_date: req.query.date,
+        schedulePersonId: user.id,
+        status: "postponed",
+      },
+    });
+
+    find.forEach((element) => {
+      val.push(element.ScheduleId);
+    });
+
+    findPostpone.forEach((element) => {
+      val.push(element.ScheduleId);
+    });
+
+    const schedules = await Schedule.findAll({
+      where: {
+        id: { [Op.notIn]: val },
+        type: "measurer",
+      },
+    });
+
+    return res.status(200).json({
+      message: "Schedule Fetched Successfully",
+      data: { user, schedules },
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 400;
+    }
+    next(err);
+  }
+};
+
+exports.decode_mail = async (req, res, next) => {
+  try {
+    // const c_id = Buffer.from(req.params.data, "base64").toString("utf-8");
+
+    // //console.log(c_id);
+
+    const check_id = await Enquiry.findOne({ where: { id: req.params.id } });
+
+    return res.status(200).json({
+      message: "Decode mail",
+      data: check_id,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.send_mail_customer = async (req, res, next) => {
+  try {
+    const check = await Enquiry.findOne({
+      where: { id: req.params.id },
+    });
+    const customer = await Customer.findOne({
+      where: { id: check.customerId },
+    });
+    if (!check) throw new Error("Customer not found");
+
+    // const buff = new Buffer(check.id);
+    // const encoded = buff.toString("base64")
+
+    // const encoded = btoa(check.id);
+
+    const data = await ejs.renderFile(
+      path.join(__dirname, "../views/email/customer_response.ejs"),
+      {
+        link: "https://ff.zidni.academy/customer-schedule/" + check.id,
+      },
+    );
+
+    sendMail(
+      customer.primary_email,
+      "Token amount Submitted You have to Schedule Measurer",
+      data,
+    );
+
+    await EnquiryStatus.create({
+      remark: "Mail sent to Customer",
+      status: "completed",
+      enquiryId: req.params.id,
+    });
+
+    return res.status(200).json({
+      message: "Mail sent Successfully",
+      data: [],
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 404;
+    }
+    next(err);
+  }
+};
+
+exports.getNotification = async (req, res, next) => {
+  try {
+    const limit = parseInt(req.query.pageSize) || 10;
+    const page = parseInt(req.query.pageNo) || 1;
+
+    const offset = (page - 1) * limit;
+
+    const user = await User.findByPk(req.userId);
+
+    let notification;
+
+    if (user.type == "super-admin") {
+      notification = await Notification.findAndCountAll({
+        order: [["id", "DESC"]],
+        limit,
+        offset,
+        include: {
+          model: Enquiry,
+          include: { model: Customer },
+        },
+      });
+    } else if (user.type == "measurer") {
+      notification = await Notification.findAndCountAll({
+        where: { measurerId: req.userId },
+        order: [["id", "DESC"]],
+        limit,
+        offset,
+        include: {
+          model: Enquiry,
+          include: { model: Customer, model: Enquiry_Schedule },
+        },
+      });
+    } else if (user.type == "sales-person") {
+      notification = await Notification.findAndCountAll({
+        where: { salesId: req.userId },
+        order: [["id", "DESC"]],
+        limit,
+        offset,
+        include: {
+          model: Enquiry,
+          include: { model: Customer },
+        },
+      });
+    } else if (user.type == "installer") {
+      notification = await Notification.findAndCountAll({
+        where: { installerId: req.userId },
+        order: [["id", "DESC"]],
+        limit,
+        offset,
+        include: {
+          model: Enquiry,
+          include: { model: Customer },
+        },
+      });
+    } else if (user.type == "stitching-store-manager") {
+      notification = await Notification.findAndCountAll({
+        where: { qcId: req.userId },
+        order: [["id", "DESC"]],
+        limit,
+        offset,
+        include: {
+          model: Enquiry,
+          include: { model: Customer },
+        },
+      });
+    } else if (user.type == "outlet") {
+      notification = await Notification.findAndCountAll({
+        where: { adminId: req.userId },
+        order: [["id", "DESC"]],
+        limit,
+        offset,
+        include: {
+          model: Enquiry,
+          include: { model: Customer },
+        },
+      });
+    }
+
+    const totalPages = Math.ceil(notification.count / limit);
+
+    const obj = {
+      totalItems: notification.count,
+      totalPages,
+      currentPage: page,
+      rows: notification.rows,
+    };
+
+    res.status(200).json({
+      message: "Notificaiton Fetched",
+      data: obj,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 404;
+    }
+    next(err);
+  }
+};
+
+exports.getEnquirySchedule = async (req, res, next) => {
+  try {
+    const enq_schedule = await Enquiry_Schedule.findAll({
+      where: { status: "pending", date: { [Op.gte]: Date.now() } },
+      include: [User, { model: Enquiry, include: User }, Schedule],
+    });
+
+    res.status(200).json({
+      message: " Upcoming Enquiry Schedule Fetched",
+      data: enq_schedule,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 404;
+    }
+    next(err);
+  }
+};
+exports.get_measurer_data = async (req, res, next) => {
+  try {
+    const user = await User.findOne({
+      where: { id: req.params.id, type: "measurer" },
+      attributes: ["firstName", "lastName", "email", "userId", "phone"],
+    });
+    const data = await Enquiry_Schedule.findAll({
+      where: { schedulePersonId: req.params.id },
+      attributes: ["status", "date"],
+      include: [
+        {
+          model: Enquiry,
+          attributes: ["id", "status", "enquiryId", "amount"],
+          include: [
+            {
+              model: Customer,
+              attributes: [
+                "firstName",
+                "lastName",
+                "primary_phone",
+                "primary_email",
+              ],
+            },
+          ],
+        },
+        { model: Schedule, attributes: ["start_time", "end_time"] },
+      ],
+    });
+    const obj = {
+      measurer: user,
+      enquiry: data,
+      totalEnquiry: await Enquiry_Schedule.count({
+        where: { schedulePersonId: req.params.id },
+      }),
+      cancelEnquiry: await Enquiry_Schedule.count({
+        where: { schedulePersonId: req.params.id, status: "canceled" },
+      }),
+      pendingEnquiry: await Enquiry_Schedule.count({
+        where: { schedulePersonId: req.params.id, status: "pending" },
+      }),
+      completedEnquiry: await Enquiry_Schedule.count({
+        where: { schedulePersonId: req.params.id, status: "completed" },
+      }),
+    };
+    return res.status(200).json({
+      message: "list of measurer enquiry",
+      data: obj,
+      status: true,
+    });
+  } catch (err) {
+    err.statusCode = 500;
+    next(err);
+  }
+};
+exports.createBeltType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    for (var i = 0; i < file.length; i++) {
+      const newBorder = await BeltType.create({
+        type: file[i].fieldname,
+        image: file[i].path,
+      });
+    }
+    res.send(file);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBeltType = async (req, res, next) => {
+  try {
+    await BeltType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindBorderTypes = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    for (var i = 0; i < file.length; i++) {
+      const newBorder = await BlindBorderType.create({
+        type: file[i].fieldname,
+        image: file[i].path,
+      });
+    }
+    res.send(file);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindBorderType = async (req, res, next) => {
+  try {
+    await BlindBorderType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindFitting = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindFitting = await BlindFittingType.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindFitting);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindFittingType = async (req, res, next) => {
+  try {
+    await BlindFittingType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindMotorTrackType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await BlindMotorTrackType.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindMotorTrackType = async (req, res, next) => {
+  try {
+    await BlindMotorTrackType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindMotor = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await BlindMotorType.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindMotorType = async (req, res, next) => {
+  try {
+    await BlindMotorType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindStyle = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindstyle = await BlindStyle.create({
+      style: req.body.style,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindstyle);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindStyle = async (req, res, next) => {
+  try {
+    await BlindStyle.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindTrack = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await BlindTrackType.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindTrack = async (req, res, next) => {
+  try {
+    await BlindTrackType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindWindowType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await BlindWindowType.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindWindowType = async (req, res, next) => {
+  try {
+    await BlindWindowType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindShades = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    const blindmotor = await BlindShades.create({
+      name: req.body.name,
+      bookId: req.body.bookId,
+      code: req.body.code,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindShades = async (req, res, next) => {
+  try {
+    await BlindShades.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBlindSubType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await BlindSubType.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBlindSubType = async (req, res, next) => {
+  try {
+    await BlindSubType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBook = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    const blindmotor = await Book.create({
+      book: req.body.book,
+      brandId: req.body.brandId,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBook = async (req, res, next) => {
+  try {
+    await Book.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBorders = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    for (var i = 0; i < file.length; i++) {
+      const newBorder = await BorderType.create({
+        type: file[i].fieldname,
+        image: file[i].path,
+      });
+    }
+    res.send(file);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBorder = async (req, res, next) => {
+  try {
+    await BorderType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBracket = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    for (var i = 0; i < file.length; i++) {
+      const newBorder = await BracketSize.create({
+        size: req.body.size,
+      });
+    }
+    res.send(newBorder);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBorder = async (req, res, next) => {
+  try {
+    await BracketSize.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createBrand = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    const blindmotor = await Brand.create({
+      brand: req.body.brand,
+      materialId: req.body.materialId,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteBrand = async (req, res, next) => {
+  try {
+    await Brand.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createCeiling = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    for (var i = 0; i < req.body.length; i++) {
+      const blindmotor = await CeilingType.create({
+        type: req.body[i].type,
+        note: req.body[i].note,
+      });
+    }
+
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteCeiling = async (req, res, next) => {
+  try {
+    await CeilingType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createPattern = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    for (var i = 0; i < file.length; i++) {
+      const newBorder = await CurtainPattern.create({
+        pattern: file[i].fieldname,
+        image: file[i].path,
+      });
+    }
+    res.send(file);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deletePattern = async (req, res, next) => {
+  try {
+    await CurtainPattern.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createCurtainStyle = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await CurtainStyle.create({
+      curtainStyle: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteCurtainStyle = async (req, res, next) => {
+  try {
+    await CurtainStyle.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createCurtainOperation = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+
+    for (var i = 0; i < req.body.length; i++) {
+      const blindmotor = await CurtainOperation.create({
+        operationType: req.body[i].operationType,
+      });
+    }
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteCurtainOperation = async (req, res, next) => {
+  try {
+    await CurtainOperation.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createCurtainStyle = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await Ladder.create({
+      ladder: req.body.ladder,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteCurtainStyle = async (req, res, next) => {
+  try {
+    await Ladder.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createMotorOperation = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+
+    for (var i = 0; i < req.body.length; i++) {
+      const blindmotor = await MotorOperation.create({
+        type: req.body[i].type,
+      });
+    }
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteMotorOperation = async (req, res, next) => {
+  try {
+    await MotorOperation.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createParkingSpace = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    for (var i = 0; i < req.body.length; i++) {
+      const blindmotor = await ParkingSpace.create({
+        space: req.body[i].space,
+      });
+    }
+
+    res.send("Uploaded");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteParkingSpace = async (req, res, next) => {
+  try {
+    await ParkingSpace.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createPelmettype = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    for (var i = 0; i < file.length; i++) {
+      const blindmotor = await PelmetType.create({
+        type: file[i].fieldname,
+        image: file[i].path,
+      });
+    }
+    res.send("Uploaded");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deletePelmettype = async (req, res, next) => {
+  try {
+    await PelmetType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createRodType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    for (var i = 0; i < file.length; i++) {
+      const blindmotor = await RodType.create({
+        type: file[i].fieldname,
+        image: file[i].path,
+      });
+    }
+
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteRodType = async (req, res, next) => {
+  try {
+    await RodType.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createScrewSize = async (req, res, next) => {
+  try {
+    // const { file, body } = await UploadFile(req, "hardware-details")
+    for (var i = 0; i < req.body.length; i++) {
+      const newBorder = await ScrewSize.create({
+        size: req.body.size,
+      });
+    }
+    res.send(newBorder);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteScrewSize = async (req, res, next) => {
+  try {
+    await ScrewSize.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+exports.createTrack = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details");
+    const blindmotor = await Track.create({
+      type: req.body.type,
+      image: file.path,
+      note: req.body.note,
+    });
+    res.send(blindmotor);
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteTrack = async (req, res, next) => {
+  try {
+    await Track.destroy({ where: { id: req.params.id } });
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.AddSofaSubType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details/sofa");
+    const newSofa = await SofaType.create({
+      type: req.body.type,
+      image: file.path,
+      isSubType: true,
+      price: req.body.price,
+      fabricId: req.body.fabricId,
+      sofaSubType: req.body.sofaSubType,
+    });
+
+    return res.status(200).json({
+      message: "Type Added Successfully",
+      status: true,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+exports.AddSofaType = async (req, res, next) => {
+  try {
+    const { file, body } = await UploadFile(req, "hardware-details/sofa");
+    //console.log(file)
+    const newSofa = await SofaType.create({
+      type: req.body.type,
+      image: file.path,
+    });
+
+    return res.status(200).json({
+      message: "Type Added Successfully",
+      status: true,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+exports.deleteSofaType = async (req, res, next) => {
+  try {
+    const sofa_type = await SofaType.destroy({ where: { id: req.params.id } });
+    removefile(
+      sofa_type.image
+        ? sofa_type.image
+        : sofa_type[0].image
+          ? sofa_type[0].image
+          : null,
+    );
+    res.send("deleted");
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.createWarehouse = async (req, res, next) => {
+  try {
+    const warehouse = await Warehouse.findOne({
+      where: {
+        name: req.body.name,
+        location: req.body.location,
+        latitude: req.body.latitude,
+        longitude: req.body.longitude,
+      },
+    });
+    dataFound(warehouse, 400, "Warehouse already exist");
+    const wh = await Warehouse.findOne({ order: [["id", "DESC"]] });
+    const newWarehouse = await Warehouse.create({
+      name: req.body.name,
+      warehouseId: req.body.warehouseId,
+      location: req.body.location,
+      latitude: req.body.latitude,
+      longitude: req.body.longitude,
+    });
+
+    res.status(200).json({
+      message: "New warehouse created",
+      data: newWarehouse,
+      status: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+exports.updateWarehouse = async (req, res, next) => {
+  try {
+    const warehouse = await Warehouse.findOne({ where: { id: req.params.id } });
+    dataNotFound(warehouse, 400, "Warehouse Not exist");
+
+    const newWarehouse = await warehouse.update({
+      name: req.body.name,
+      warehouseId: req.body.warehouseId,
+      location: req.body.location,
+      latitude: req.body.latitude,
+      longitude: req.body.longitude,
+    });
+
+    res.status(200).json({
+      message: " warehouse updated",
+      data: newWarehouse,
+      status: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+exports.deleteWarehouse = async (req, res, next) => {
+  try {
+    const warehouse = await Warehouse.findOne({ where: { id: req.params.id } });
+    dataNotFound(warehouse, 400, "Warehouse Not exist");
+
+    await warehouse.destroy();
+
+    res.status(200).json({
+      message: " warehouse deleted",
+      status: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+exports.getAllWarehouse = async (req, res, next) => {
+  try {
+    const warehouse = await Warehouse.findAll();
+
+    res.status(200).json({
+      message: " warehouse fetched",
+      data: warehouse,
+      status: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+exports.getWarehouse = async (req, res, next) => {
+  try {
+    const warehouse = await Warehouse.findOne({ where: { id: req.params.id } });
+
+    res.status(200).json({
+      message: " warehouse fetched",
+      data: warehouse,
+      status: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+exports.createScheduleInstaller = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({
+      where: { id: req.userId, type: "super-admin" },
+    });
+    dataNotFound(admin, 400, "Not Authorized");
+
+    for (var i = 0; i < req.body.length; i++) {
+      const schedule = await Schedule.findOne({
+        where: {
+          [Op.and]: [
+            { start_time: req.body[i].Stime, end_time: req.body[i].Etime },
+          ],
+        },
+      });
+
+      if (schedule) {
+        return res.status(400).json({
+          message: "Schedule Already Exists",
+          status: false,
+        });
+      }
+
+      await Schedule.create({
+        start_time: req.body[i].Stime,
+        end_time: req.body[i].Etime,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Schedule Created Successfully",
+      data: [],
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+exports.getScheduleInstaller = async (req, res, next) => {
+  try {
+    const schedule = await Schedule.findAll();
+
+    res.status(200).json({
+      message: "Schedule Fetched Successfully",
+      data: schedule,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.getAllEnquiries2 = async (req, res, next) => {
+  try {
+    const dateTo = req.query.dateTo;
+    const dateFrom = req.query.dateFrom;
+    const filter = {};
+    if (dateTo && dateFrom) {
+      filter.createdAt = {
+        [Sequelize.Op.between]: [new Date(dateFrom), new Date(dateTo)],
+      };
+    }
+    if (req.query.salesId) {
+      filter.salesId = req.query.salesId;
+    }
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+    const outletId = [];
+    if (req.query.storeId) {
+      const data = await OutletUser.findAll({
+        where: { outletId: req.query.storeId },
+      });
+      data.forEach((element) => {
+        outletId.push(element.salesPersonId);
+      });
+    }
+    let userInclude = {};
+    if (req.query.storeId && outletId.length > 0) {
+      userInclude = {
+        model: User,
+        attributes: { exclude: ["activity"] },
+        where: {
+          id: outletId,
+        },
+      };
+    } else if (!req.query.storeId) {
+      userInclude = { model: User, attributes: { exclude: ["activity"] } };
+    } else {
+      return res.status(200).json({
+        message: "Enquiries Fetched Successfully",
+        data: [],
+        status: true,
+        pages: 0,
+        currentPage: 0,
+      });
+    }
+
+    const data = await Enquiry.findAndCountAll({
+      where: filter,
+      include: [userInclude],
+    });
+    let page = req.query.page; // page number
+    let limit = 20; // number of records per page
+    let pages = Math.ceil(data.count / limit);
+
+    if (req.query.page) {
+      let offset = 0;
+
+      offset = limit * (page - 1);
+
+      let enquiries = await Enquiry.findAll({
+        where: filter,
+        include: [
+          { model: EnquiryStatus },
+          { model: Customer },
+          userInclude,
+          { model: Enquiry_Schedule, attributes: ["status", "date"] },
+          { model: InstallerTasks, attributes: ["status", "date"] },
+          { model: Order, attributes: ["orderDate", "orderStatus"] },
+        ],
+        order: [
+          ["createdAt", "DESC"],
+          ["id", "DESC"],
+        ],
+        limit: limit,
+        offset: offset,
+      });
+
+      for (var i = 0; i < enquiries.length; i++) {
+        const enq = enquiries[i];
+
+        const products = [];
+        const room = await Room.findAll({
+          where: { enquiryId: enq.id },
+          include: [{ model: SelectedMaterial, include: Material }],
+        });
+        for (const i of room) {
+          for (const j of i.selectedmaterials) {
+            if (!products.includes(j.material.name)) {
+              products.push(j.material.name);
+            }
+          }
+        }
+
+        enq.dataValues.products = products;
+      }
+
+      return res.status(200).json({
+        message: "Enquiries Fetched Successfully",
+        data: enquiries,
+        status: true,
+        pages: pages,
+        currentPage: page,
+        totalData: data.count,
+      });
+    } else {
+      let enquiries = await Enquiry.findAll({
+        include: [
+          { model: EnquiryStatus },
+          { model: Customer },
+          userInclude,
+          { model: Enquiry_Schedule, attributes: ["status", "date"] },
+        ],
+        where: filter,
+        order: [
+          ["createdAt", "DESC"],
+          ["id", "DESC"],
+        ],
+        limit: 20,
+      });
+      for (var i = 0; i < enquiries.length; i++) {
+        const enq = enquiries[i];
+
+        const products = [];
+        const selectedmaterial = await SelectedMaterial.findAll({
+          where: { enquiryId: enq.id },
+          include: [Material],
+        });
+
+        for (const i of selectedmaterial) {
+          const materials = await Material.findOne({
+            where: { id: i.materialId },
+          });
+          if (!products.includes(materials.name)) {
+            products.push(materials.name);
+          }
+        }
+
+        enq.dataValues.products = products;
+      }
+
+      if (dateFrom && dateTo) {
+        enquiries = enquiries.filter((enq) => {
+          const createdAtDate = new Date(enq.createdAt);
+
+          return (
+            createdAtDate >= new Date(dateFrom) &&
+            createdAtDate <= new Date(dateTo)
+          );
+        });
+      }
+      res.status(200).json({
+        message: "Enquiries Fetched Successfully",
+        data: enquiries,
+        status: true,
+        pages: pages,
+      });
+    }
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+const Excel = require("exceljs");
+
+exports.StoreWiseMesurementAging = async (req, res, next) => {
+  try {
+    const todayDate = moment().startOf("day").format("YYYY-MM-DD");
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const EnquiryArray = [];
+    let stores;
+    let dateCondition = {};
+    if (req.query.fromDate && req.query.toDate) {
+      dateCondition = {
+        createdAt: {
+          [Op.gte]: req.query.fromDate,
+          [Op.lte]: req.query.toDate,
+        },
+      };
+    }
+
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Measurement (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Address", key: "address", width: 70 },
+      { header: "Store Name", key: "store", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Measurement Assign Date", key: "assign_date", width: 32 },
+      { header: "Measurement Complete Date", key: "complete_date", width: 32 },
+      { header: "Measurment Status", key: "measurement_status", width: 32 },
+      {
+        header: "Measurement Postpone Date",
+        key: "measurement_postpone_date",
+        width: 32,
+      },
+      {
+        header: "Measurement Postpone Reason",
+        key: "measurement_postpone_reason",
+        width: 32,
+      },
+    ];
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, size: 12, color: { argb: "000000" } };
+    headerRow.alignment = { horizontal: "center", vertical: "middle" };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFFF00" },
+    };
+    headerRow.height = 25;
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let enquiry = [];
+
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.notIn]: ["cancelled", "completed"],
+              },
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.notIn]: ["cancelled", "completed"],
+              },
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: [User, Schedule] },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        const pendingEnquiry = enquiry.filter(
+          (enq) =>
+            enq.enquiryschedules.length > 0 &&
+            enq.enquiryschedules[enq.enquiryschedules.length - 1].date ===
+            todayDate,
+        );
+
+        for (let k = 0; k < pendingEnquiry.length; k++) {
+          const item = pendingEnquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const assigned_time =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[0].schedule
+                ? item.enquiryschedules[0].schedule.start_time
+                : ""
+              : "-";
+
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            address: `${item.landmark ? item.landmark : item.street ? item.street : ""}, ${item.city}, ${item.state}, ${item.pincode}`,
+            store: store.firstName,
+            products: products.toString(),
+            assign_date:
+              item.enquiryschedules.length > 0
+                ? item.enquiryschedules[0].date + " " + assigned_time
+                : "",
+            complete_date:
+              item.enquiryschedules.length > 0
+                ? item.enquiryschedules[0].measurement_done
+                  ? moment
+                    .utc(item.enquiryschedules[0].measurement_done)
+                    .utcOffset(330)
+                    .format("YYYY-MM-DD, h:mm a")
+                  : ""
+                : "",
+            measurement_status:
+              item.enquiryschedules.length == 0
+                ? ""
+                : item.enquiryschedules[item.enquiryschedules.length - 1]
+                  .status,
+            measurement_postpone_date:
+              item.enquiryschedules.length === 0
+                ? "Measurer not assigned"
+                : item.enquiryschedules[0].status == "postponed"
+                  ? item.enquiryschedules[0].postpone_date
+                  : `Not found`,
+            measurement_postpone_reason:
+              item.enquiryschedules.length == 0
+                ? ""
+                : item.enquiryschedules[0].remark,
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+
+        worksheet.eachRow({ includeEmpty: false }, (row) => {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin" },
+              left: { style: "thin" },
+              bottom: { style: "thin" },
+              right: { style: "thin" },
+            };
+          });
+        });
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.pendingMesurement = async (req, res, next) => {
+  try {
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const EnquiryArray = [];
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition = {};
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["inprogess", "fresh"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["inprogess", "fresh"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        const pendingEnquiry = enquiry.filter(
+          (enq) =>
+            enq.enquiryschedules.length > 0 &&
+            enq.enquiryschedules[enq.enquiryschedules.length - 1].status ===
+            "pending",
+        );
+
+        for (let k = 0; k < pendingEnquiry.length; k++) {
+          const item = pendingEnquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.StoreWiseQcCompleted = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Remark", key: "remark", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Order Status", key: "order_status", width: 32 },
+      { header: "Order Date", key: "order_date", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "TAT", key: "tat", width: 10 },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Enquiry Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["qc-complete"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: true, QC3: true } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["qc-complete"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: true, QC3: true } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const startTime =
+            item.orders.length > 0
+              ? item.orders[item.orders.length - 1].QC2_Completed
+              : "";
+          const endTime =
+            item.orders.length > 0
+              ? item.orders[item.orders.length - 1].QC_Complete
+              : "";
+
+          const measurer =
+            item.enquiryschedules.length > 0 && item.enquiryschedules[0].user
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "User Not Available or Assigned";
+
+          let daysDiff = "";
+          if (startTime && endTime) {
+            const timeDiff =
+              new Date(endTime).getTime() - new Date(startTime).getTime();
+            daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            let hours = (daysDiff * 24).toFixed(0);
+          }
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            remark:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            days: daysDiff
+              ? daysDiff < 1
+                ? "< 1"
+                : Math.round(daysDiff).toString()
+              : "",
+            tat: daysDiff ? (daysDiff < 1 ? "IN TAT" : "OUT OF TAT") : "",
+            measurer,
+            order_date: item.orders.length > 0 ? item.orders[0].createdAt : "",
+            order_status:
+              item.orders.length > 0 ? item.orders[0].orderStatus : "",
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.qcCompletedList = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["qc-complete"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: true, QC3: true } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["qc-complete"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: true, QC3: true } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.StoreWiseOrderCreated = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Remark", key: "remark", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Order Status", key: "order_status", width: 32 },
+      { header: "Order Date", key: "order_date", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "TAT", key: "tat", width: 10 },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Enquiry Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        const enquiriesWithOrders = enquiry.filter(
+          (enquiry) => enquiry.orders && enquiry.orders.length > 0,
+        );
+
+        for (let k = 0; k < enquiriesWithOrders.length; k++) {
+          const item = enquiriesWithOrders[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const startTime =
+            item.orders.length > 0
+              ? item.orders[item.orders.length - 1].createdAt
+              : "";
+          const endTime = item.estimate_createdAt || "";
+
+          const measurer =
+            item.enquiryschedules.length > 0 && item.enquiryschedules[0].user
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "User Not Available or Assigned";
+
+          let daysDiff;
+          if (startTime && endTime) {
+            const timeDiff =
+              new Date(startTime).getTime() - new Date(endTime).getTime();
+            daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            let hours = (daysDiff * 24).toFixed(0);
+          }
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            remark:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            days: daysDiff
+              ? daysDiff < 2
+                ? "< 2"
+                : Math.round(daysDiff).toString()
+              : "",
+            tat: daysDiff ? (daysDiff < 48 ? "In TAT" : "Out TAT") : "",
+            measurer,
+            order_date: item.orders.length > 0 ? item.orders[0].createdAt : "",
+            order_status:
+              item.orders.length > 0 ? item.orders[0].orderStatus : "",
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.storewiseOrderList = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        const enquiriesWithOrders = enquiry.filter(
+          (enquiry) => enquiry.orders && enquiry.orders.length > 0,
+        );
+
+        for (let k = 0; k < enquiriesWithOrders.length; k++) {
+          const item = enquiriesWithOrders[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+const formatDate = (date) => {
+  return date ? moment(date).format("DD-MM-YYYY") : "";
+};
+exports.StoreWiseQcReport = async (req, res, next) => {
+  try {
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC Overdue Report");
+
+    worksheet.columns = [
+      { header: "Enquiry No.", key: "enquiryNo", width: 15 },
+      { header: "Order No.", key: "orderNo", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 25 },
+      { header: "Store Name", key: "storeName", width: 20 },
+      { header: "Products", key: "products", width: 35 },
+      { header: "Sales Person", key: "salesPerson", width: 20 },
+      { header: "Order Date", key: "orderDate", width: 18 },
+      { header: "Delivery Date", key: "deliveryDate", width: 18 },
+      {
+        header: "Expected Receiving Date",
+        key: "expectedReceivingDate",
+        width: 25,
+      },
+      { header: "QC1 Date", key: "qc1_date", width: 18 },
+      { header: "QC2 Date", key: "qc2_date", width: 18 },
+      { header: "Vendor", key: "vendor", width: 18 },
+      { header: "Remark", key: "remark", width: 50 },
+    ];
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, size: 12, color: { argb: "FFFFFF" } };
+    headerRow.alignment = { horizontal: "center", vertical: "middle" };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "4472C4" },
+    };
+    headerRow.height = 25;
+
+    // Helper to add a QC section
+    const addQCSection = async (sectionTitle, qcType) => {
+      // Section title
+      const titleRow = worksheet.addRow([sectionTitle]);
+      titleRow.font = { bold: true, size: 14 };
+      worksheet.mergeCells(`A${titleRow.number}:J${titleRow.number}`);
+      titleRow.alignment = { horizontal: "center" };
+      titleRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFFF00" },
+      };
+
+      // Base Enquiry condition
+      const baseEnquiryWhere = {
+        "$enquiry.estimate_created$": true,
+        "$enquiry.status$": { [Op.notIn]: ["cancelled", "completed"] },
+      };
+
+      // Overdue condition logic
+      let qcWhereCondition = {};
+      if (qcType === "QC_1") {
+        qcWhereCondition = {
+          ...baseEnquiryWhere,
+          QC1: false,
+          [Op.and]: Sequelize.literal(
+            `TIMESTAMPDIFF(HOUR, orderDate, NOW()) > 48`,
+          ),
+        };
+      } else if (qcType === "QC_2") {
+        qcWhereCondition = {
+          ...baseEnquiryWhere,
+          QC1: true,
+          QC2: false,
+          [Op.and]: Sequelize.literal(
+            `TIMESTAMPDIFF(HOUR, QC_Start, NOW()) > 144`,
+          ),
+        };
+      } else if (qcType === "QC_3") {
+        qcWhereCondition = {
+          ...baseEnquiryWhere,
+          QC1: true,
+          QC2: true,
+          QC3: false,
+          [Op.and]: Sequelize.literal(
+            `TIMESTAMPDIFF(HOUR, QC2_Completed, NOW()) > 72`,
+          ),
+        };
+      }
+
+      // Fetch overdue enquiries
+      const enquiries = await Order.findAll({
+        where: qcWhereCondition,
+        include: [
+          {
+            model: Enquiry,
+            required: true,
+            include: [
+              { model: Customer },
+              { model: User },
+              { model: EnquiryStatus },
+              {
+                model: Enquiry_Schedule,
+                include: [{ model: User }], // assuming EnquirySchedule → User relation
+              },
+            ],
+          },
+        ],
+      });
+
+      // Add enquiry rows to Excel
+      for (const order of enquiries) {
+        const enquiry = order.enquiry;
+        const products = [];
+
+        const selectedMaterials = await SelectedMaterial.findAll({
+          where: { enquiryId: enquiry.id },
+          include: [Material],
+        });
+
+        for (const sm of selectedMaterials) {
+          if (sm.material && !products.includes(sm.material.name)) {
+            products.push(sm.material.name);
+          }
+        }
+
+        const outletUser = await OutletUser.findOne({
+          where: { salesPersonId: enquiry.salesId },
+        });
+
+        let outlet = null;
+        if (outletUser) {
+          outlet = await User.findOne({
+            where: { id: outletUser.outletId },
+            attributes: ["id", "firstName", "phone", "email"],
+          });
+        }
+
+        worksheet.addRow({
+          enquiryNo: enquiry?.enquiryId || "",
+          orderNo: order.orderId,
+          customerName: `${enquiry?.customer?.firstName || ""} ${enquiry?.customer?.lastName || ""}`,
+          storeName: outlet?.firstName || "",
+          products: products.join(", ") || "",
+          salesPerson: `${enquiry?.user?.firstName || ""} ${enquiry?.user?.lastName || ""}`,
+          orderDate: formatDate(order?.orderDate),
+          deliveryDate: enquiry?.expected_delivery_date || "",
+          expectedReceivingDate: formatDate(order?.sta_received_date),
+          qc1_date: formatDate(order?.QC_Start),
+          qc2_date: formatDate(order?.QC2_Completed),
+          vendor:
+            enquiry?.enquiryschedules[0].user.firstName +
+            " " +
+            enquiry?.enquiryschedules[0].user.lastName || "",
+          remark: "",
+        });
+      }
+
+      // Apply borders to section rows
+      worksheet.eachRow({ includeEmpty: false }, (row) => {
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+      });
+    };
+
+    // Add all three QC overdue sections
+    await addQCSection("QC 1 Overdue", "QC_1");
+    await addQCSection("QC 2 Overdue", "QC_2");
+    await addQCSection("QC 3 Overdue", "QC_3");
+
+    // Send Excel response
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=QC_Overdue_Report.xlsx",
+    );
+
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+  } catch (error) {
+    console.error("Error generating QC report:", error);
+    next(error);
+  }
+};
+
+exports.StoreWiseQc1Done = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Remark", key: "remark", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Order Status", key: "order_status", width: 32 },
+      { header: "Order Date", key: "order_date", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "TAT", key: "tat", width: 10 },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Enquiry Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: false, QC3: false } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: false, QC3: false } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const startTime =
+            item.orders.length > 0
+              ? item.orders[item.orders.length - 1].sta_received_date
+              : "";
+          const endTime =
+            item.orders.length > 0
+              ? item.orders[item.orders.length - 1].QC_Start
+              : "";
+
+          const measurer =
+            item.enquiryschedules.length > 0 && item.enquiryschedules[0].user
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "User Not Available or Assigned";
+
+          let daysDiff = "";
+          if (startTime && endTime) {
+            const timeDiff =
+              new Date(endTime).getTime() - new Date(startTime).getTime();
+            daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            let hours = (daysDiff * 24).toFixed(0);
+          }
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            remark:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            days: daysDiff
+              ? daysDiff < 1
+                ? "< 1"
+                : Math.round(daysDiff).toString()
+              : "",
+            tat: daysDiff ? (daysDiff < 1 ? "IN TAT" : "OUT OF TAT") : "",
+            measurer,
+            order_date: item.orders.length > 0 ? item.orders[0].createdAt : "",
+            order_status:
+              item.orders.length > 0 ? item.orders[0].orderStatus : "",
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Qc1 Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.storewiseQc1List = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: false, QC3: false } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: false, QC3: false } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.StoreWiseQc2Done = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Secondary Mobile No.", key: "phone2", width: 32 },
+      { header: "Remark", key: "remark", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Task Start", key: "task_start", width: 32 },
+      { header: "Measurement Start Date", key: "assign_date", width: 32 },
+      { header: "Measurment Complete Date", key: "task_end", width: 32 },
+      { header: "Measurment Status", key: "measurement_status", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "Aging", key: "aging", width: 15 },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+      { header: "TAT", key: "tat", width: 10 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: true, QC3: false } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["order-confirmed"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order, where: { QC1: true, QC2: true, QC3: false } },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const startTime =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[item.enquiryschedules.length - 1]
+                .createdAt
+              : item.createdAt;
+          const endTime =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[item.enquiryschedules.length - 1]
+                .updatedAt
+              : item.updatedAt;
+          const date = endTime?.toISOString()?.split("T")[0];
+          const parts = date.split("-");
+          const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+          const measurer =
+            item.enquiryschedules.length > 0 && item.enquiryschedules[0].user
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "User Not Available or Assigned";
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            phone2: ` ${item.customer.secondary_phone ? item.customer.secondary_phone : ""}`,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            remark:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            task_start: startTime?.toISOString()?.split("T")[0],
+            task_end:
+              item.status == "inprogess"
+                ? " Measurement not completed yet "
+                : formattedDate,
+            days:
+              item.status == "inprogess"
+                ? ""
+                : daysDiff < 1
+                  ? "< 1"
+                  : Math.round(daysDiff).toString(),
+            aging:
+              item.status == "inprogess"
+                ? ""
+                : hours < 24
+                  ? "<24hrs"
+                  : hours > 24 && hours < 48
+                    ? "24hrs"
+                    : hours > 48 && hours < 72
+                      ? "48hrs"
+                      : hours == 72
+                        ? "72hrs"
+                        : ">72hrs",
+            measurer,
+            assign_date:
+              item.enquiryschedules.length == 0
+                ? "Measurer not assgined"
+                : startTime,
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+            measurement_status:
+              item.enquiryschedules.length == 0
+                ? "Measurer not assgined"
+                : item.enquiryschedules[item.enquiryschedules.length - 1]
+                  .status,
+            tat: hours < 48 ? "In TAT" : "Out TAT",
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Qc1 Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+function getTime(utcTimeString) {
+  const utcDate = new Date(utcTimeString);
+
+  const istOffset = 330;
+  const istDate = new Date(utcDate.getTime() + istOffset * 60000);
+
+  return istDate?.toISOString()?.slice(11, 16);
+}
+
+exports.StoreWiseTotal = async (req, res, next) => {
+  try {
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const EnquiryArray = [];
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    const headerAlignment = { horizontal: "center" };
+
+    worksheet.columns = [
+      {
+        header: "Enquiry Id",
+        key: "enquiryId",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Enquiry Date",
+        key: "task_start_date",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Enquiry Time",
+        key: "task_start_time",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Customer Name",
+        key: "customerName",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Customer Mobile No.",
+        key: "phone",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Customer Email",
+        key: "email",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Address",
+        key: "address",
+        width: 100,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Products",
+        key: "products",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Sales Person",
+        key: "sales_person",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Business Value",
+        key: "business_value",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Current Status",
+        key: "status",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurer",
+        key: "measurer",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurement Assign Date",
+        key: "measurement_assing_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurement Complete Date",
+        key: "measurement_complete_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "measurement_days",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "measurement_tat", width: 15 },
+      {
+        header: "Reason For Measurement (Last) Reschedule ",
+        key: "reason_reschedule",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurement Postpone Date",
+        key: "measurement_postpone_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Count of Reschedule",
+        key: "count_measurement",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Estimate Created Date",
+        key: "estimate_create_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Estimate Amount",
+        key: "estimate_amount",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "estimate_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "estimate_tat", width: 15 },
+      {
+        header: "Estimate Postpone Date",
+        key: "estimate_postpone_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Reason For Estimate Postpone",
+        key: "reason_estimate_postpone",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Count of Estimate Postpone",
+        key: "count_estimate_postpone",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Order Confirm Date",
+        key: "order_confirm_date",
+        width: 23,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "order_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "order_tat", width: 15 },
+      { header: "STA Received Date", key: "STA_received_date", width: 15 },
+
+      {
+        header: "QC 1 Date",
+        key: "qc1_date",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "qc1_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "qc1_tat", width: 15 },
+      {
+        header: "QC 2 Date",
+        key: "qc2_date",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "qc2_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "qc2_tat", width: 15 },
+      {
+        header: "QC 3 Date",
+        key: "qc3_date",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "qc3_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "qc3_tat", width: 15 },
+
+      {
+        header: "Customer Outstanding",
+        key: "customer_outstanding_amount",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Enquiry Outstanding",
+        key: "enquiry_outstanding_amount",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Payment Received Date",
+        key: "payment_received_date",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Installer Name",
+        key: "installer_name",
+        width: 35,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Delivery/Installation Date",
+        key: "installation_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "installation_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "installation_tat", width: 15 },
+      {
+        header: "Installation Postpone Date",
+        key: "installation_postpone_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Reason for Installation Reschedule ",
+        key: "installation_reschedule_reason",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Count of Reschedule",
+        key: "count_installation_reschedule",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Installation Complete Date",
+        key: "installation_complete_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "installation_reschedule_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "installation_reschedule_tat", width: 15 },
+
+      { header: "Feedback", key: "feedback_date", width: 15 },
+      {
+        header: "Days",
+        key: "feedback_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "feedback_tat", width: 15 },
+      { header: "Complaint", key: "complaint_date", width: 15 },
+      {
+        header: "Days",
+        key: "complaint_days",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      { header: "TAT", key: "complaint_tat", width: 15 },
+      {
+        header: "Reason For Delay",
+        key: "complaint_delay_reason",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Store",
+        key: "store",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Remark",
+        key: "remark",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+    ];
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let enquiry = [];
+        let dateCondition = {}; // Initialize as an empty object
+
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition.createdAt = {
+            [Op.gte]: req.query.fromDate,
+            [Op.lte]: req.query.toDate,
+          };
+        }
+
+        if (req.query.status) {
+          dateCondition.status = req.query.status; // Add status condition
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              {
+                model: Enquiry_Schedule,
+                include: [{ model: User }, { model: Schedule }],
+              },
+              { model: Room },
+              { model: Order },
+              { model: Feedback },
+              { model: ComplaintTask },
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: Schedule },
+                  {
+                    model: User,
+                    attributes: [
+                      "userId",
+                      "id",
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email",
+                      "type",
+                    ],
+                    as: "installer",
+                  },
+                ],
+              },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              {
+                model: Enquiry_Schedule,
+                include: [{ model: User }, { model: Schedule }],
+              },
+              { model: Room },
+              { model: Order },
+              { model: Feedback },
+              { model: ComplaintTask },
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: Schedule },
+                  {
+                    model: User,
+                    attributes: [
+                      "userId",
+                      "id",
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email",
+                      "type",
+                    ],
+                    as: "installer",
+                  },
+                ],
+              },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+
+          const products = [];
+          const room = await Room.findAll({
+            where: { enquiryId: item.id },
+            include: [{ model: SelectedMaterial, include: Material }],
+          });
+          for (const i of room) {
+            for (const j of i.selectedmaterials) {
+              if (!products.includes(j.material.name)) {
+                products.push(j.material.name);
+              }
+            }
+          }
+
+          const startTime = item.createdAt;
+          const endTime =
+            item.enquiryschedules.length > 0 &&
+              item.enquiryschedules[0].status == "completed"
+              ? item.enquiryschedules[0].measurement_done
+              : item.updatedAt;
+          const formattedDate = `${endTime?.toISOString()?.split("T")[0].split("-").reverse().join("-")}`;
+
+          const measurer =
+            item.enquiryschedules.length > 0 &&
+              item.enquiryschedules[0].user &&
+              item.enquiryschedules[item.enquiryschedules.length - 1].user &&
+              item.enquiryschedules[item.enquiryschedules.length - 1].user
+                .firstName &&
+              item.enquiryschedules[item.enquiryschedules.length - 1].user
+                .lastName
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "Measurer Not Available or Assigned";
+          const installer =
+            item.installer_tasks.length > 0 && item.installer_tasks[0].installer
+              ? `${item.installer_tasks[0].installer.firstName} ${item.installer_tasks[0].installer.lastName}`
+              : "";
+          const installationStartTime =
+            item.installer_tasks.length > 0
+              ? new Date(
+                item.installer_tasks[item.installer_tasks.length - 1].date ||
+                item.installer_tasks[item.installer_tasks.length - 1]
+                  .postponeDate,
+              )
+              : "";
+          const installationEndTime =
+            item.installer_tasks.length > 0
+              ? item.installer_tasks[item.installer_tasks.length - 1]
+                .installation_done
+              : "";
+          // const order_date = item.estimate_createdAt ? item.estimate_createdAt : endTime ? endTime : startTime;
+          const order_date =
+            item.orders.length > 0 ? item.orders[0].createdAt : null;
+          const sta_received_date =
+            item.orders.length > 0 ? item.orders[0].sta_received_date : null;
+          const qc1_complete_date =
+            item.orders.length > 0 ? item.orders[0].QC_Start : null;
+          const qc2_complete_date =
+            item.orders.length > 0 ? item.orders[0].QC2_Completed : null;
+          const qc3_complete_date =
+            item.orders.length > 0 ? item.orders[0].QC_Complete : null;
+          const feedback_date = item.feedback ? item.feedback.createdAt : null;
+
+          const complaint_date =
+            item.complaint_tasks.length && item.complaint_tasks.length > 0
+              ? item.complaint_tasks[item.complaint_tasks.length - 1].date
+              : null;
+
+          let complaint_daysDiff = "";
+          if (complaint_date && feedback_date) {
+            const timeDiff =
+              new Date(complaint_date).getTime() -
+              new Date(feedback_date).getTime();
+            complaint_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          }
+
+          let installation_daysDiff = "";
+          let installation_hours;
+          if (installationEndTime && installationStartTime) {
+            const timeDiff =
+              new Date(installationEndTime).getTime() -
+              new Date(installationStartTime).getTime();
+            installation_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            installation_hours = (installation_daysDiff * 24).toFixed(0);
+          }
+
+          let feedback_daysDiff = "";
+          if (installationEndTime && feedback_date) {
+            const timeDiff =
+              new Date(installationEndTime).getTime() -
+              new Date(feedback_date).getTime();
+            feedback_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          }
+
+          let orders_daysDiff = "";
+          let orders_hours = "";
+          if (order_date && item.estimate_createdAt) {
+            const timeDiff =
+              new Date(order_date).getTime() -
+              new Date(item.estimate_createdAt).getTime();
+            orders_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            orders_hours = (orders_daysDiff * 24).toFixed(0);
+          }
+
+          let estimate_daysDiff = "";
+          let estimate_hours;
+          if (endTime) {
+            const endDate = item.estimate_createdAt
+              ? item.estimate_createdAt
+              : new Date();
+            const timeDiff =
+              new Date(endDate).getTime() - new Date(endTime).getTime();
+            estimate_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            estimate_hours = (estimate_daysDiff * 24).toFixed(0);
+          }
+
+          let qc1_daysDiff = "";
+          if (sta_received_date && qc1_complete_date) {
+            const timeDiff =
+              new Date(sta_received_date).getTime() -
+              new Date(qc1_complete_date).getTime();
+            qc1_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          }
+
+          let qc2_daysDiff = "";
+          if (qc2_complete_date && qc1_complete_date) {
+            const timeDiff =
+              new Date(qc2_complete_date).getTime() -
+              new Date(qc1_complete_date).getTime();
+            qc2_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          }
+
+          let qc3_daysDiff = "";
+          if (qc2_complete_date && qc3_complete_date) {
+            const timeDiff =
+              new Date(qc3_complete_date).getTime() -
+              new Date(qc2_complete_date).getTime();
+            qc3_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          }
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+
+          const assigned_time =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[0].schedule
+                ? item.enquiryschedules[0].schedule.start_time
+                : ""
+              : "-";
+
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            task_start_date: item.createdAt?.toISOString()?.split("T")[0],
+            task_start_time: getTime(item.createdAt),
+            customerName:
+              item.customer &&
+              item.customer.firstName +
+              " " +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: item.customer && ` ${item.customer.primary_phone} `,
+            email: item.customer && item.customer.primary_email,
+            products: products.toString(),
+            store: store.firstName,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            business_value: item.business_value,
+            status: item.status,
+            measurer,
+            measurement_assing_date:
+              item.enquiryschedules.length === 0
+                ? "Measurer not assigned"
+                : item.enquiryschedules[0].date != null
+                  ? `${item.enquiryschedules[0].date}, ${assigned_time}`
+                  : `Not found`,
+            measurement_complete_date:
+              item.enquiryschedules.length === 0
+                ? "Measurer not assigned"
+                : item.enquiryschedules[0].status == "completed"
+                  ? moment
+                    .utc(item.enquiryschedules[0].measurement_done)
+                    .utcOffset(330)
+                    .format("DD MM YYYY, h:mm:ss a")
+                  : `Not completed yet`,
+            measurement_postpone_date:
+              item.enquiryschedules.length === 0
+                ? "Measurer not assigned"
+                : item.enquiryschedules[0].status == "postponed"
+                  ? item.enquiryschedules[0].postpone_date
+                  : `Not found`,
+            measurement_days:
+              item.status == "inprogess"
+                ? ""
+                : daysDiff < 1
+                  ? "< 1"
+                  : Math.round(daysDiff).toString(),
+            measurement_tat:
+              item.enquiryschedules.length == 0
+                ? ""
+                : daysDiff < 1
+                  ? "IN TAT"
+                  : "OUT OF TAT",
+            reason_reschedule:
+              item.enquiryschedules.length == 0
+                ? ""
+                : item.enquiryschedules[0].remark,
+            count_measurement:
+              item.enquiryschedules.length == 0
+                ? ""
+                : item.enquiryschedules[0].postpone_count,
+            address: `${item.landmark ? item.landmark : item.street ? item.street : ""}, ${item.city}, ${item.state}, ${item.pincode}`,
+            estimate_create_date: item.estimate_created
+              ? item.estimate_createdAt
+              : "Estimate not created",
+            estimate_days: item.estimate_created
+              ? estimate_daysDiff < 2
+                ? "< 2"
+                : Math.round(estimate_daysDiff).toString()
+              : "",
+            estimate_tat:
+              item.enquiryschedules.length === 0
+                ? ""
+                : item.estimate_created
+                  ? estimate_daysDiff < 2
+                    ? "IN TAT"
+                    : "OUT OF TAT"
+                  : "",
+            estimate_postpone_date: item.estimate_postpone_date
+              ? item.estimate_postpone_date
+              : "",
+            estimate_amount: item.estimate_amount || "",
+            reason_estimate_postpone: item.estimate_postpone_reason,
+            count_estimate_postpone: item.estimate_postpone_count,
+            order_confirm_date:
+              item.orders.length == 0
+                ? "Order not placed"
+                : item.orders[0].orderDate,
+            order_days: orders_daysDiff
+              ? orders_daysDiff < 2
+                ? "< 2"
+                : Math.round(orders_daysDiff).toString()
+              : "",
+            order_tat: orders_daysDiff
+              ? orders_daysDiff < 2
+                ? "IN TAT"
+                : "OUT OF TAT"
+              : "",
+            STA_received_date: sta_received_date ? sta_received_date : "",
+            qc1_date: qc1_complete_date ? qc1_complete_date : "",
+            qc1_days:
+              qc1_daysDiff !== null &&
+                qc1_daysDiff !== undefined &&
+                qc1_daysDiff !== ""
+                ? qc1_daysDiff < 2
+                  ? " < 2"
+                  : Math.round(qc1_daysDiff).toString()
+                : "",
+            qc1_tat:
+              qc1_daysDiff !== null &&
+                qc1_daysDiff !== undefined &&
+                qc1_daysDiff !== ""
+                ? qc1_daysDiff < 2
+                  ? "IN TAT"
+                  : "OUT OF TAT"
+                : "",
+            qc2_date: qc2_complete_date ? qc2_complete_date : "",
+            qc2_days:
+              qc2_daysDiff !== null &&
+                qc2_daysDiff !== undefined &&
+                qc2_daysDiff !== ""
+                ? qc2_daysDiff < 6
+                  ? " < 6"
+                  : Math.round(qc2_daysDiff).toString()
+                : "",
+            qc2_tat:
+              qc2_daysDiff !== null &&
+                qc2_daysDiff !== undefined &&
+                qc2_daysDiff !== ""
+                ? qc2_daysDiff < 6
+                  ? "IN TAT"
+                  : "OUT OF TAT"
+                : "",
+            qc3_date: qc3_complete_date ? qc3_complete_date : "",
+            qc3_days:
+              qc3_daysDiff !== null &&
+                qc3_daysDiff !== undefined &&
+                qc3_daysDiff !== ""
+                ? qc3_daysDiff < 3
+                  ? " < 3"
+                  : Math.round(qc3_daysDiff).toString()
+                : "",
+            qc3_tat:
+              qc3_daysDiff !== null &&
+                qc3_daysDiff !== undefined &&
+                qc3_daysDiff !== ""
+                ? qc3_daysDiff < 3
+                  ? "IN TAT"
+                  : "OUT OF TAT"
+                : "",
+            payment_received_date: "",
+            customer_outstanding_amount:
+              (item.customer && item.customer.outstanding_amount) || 0,
+            enquiry_outstanding_amount: item.outstanding_amount || 0,
+            installer_name: installer,
+            installation_date: installationStartTime
+              ? installationStartTime?.toISOString()?.split("T")[0] +
+              " " +
+              (item.installer_tasks &&
+                item.installer_tasks.length > 0 &&
+                item.installer_tasks[item.installer_tasks.length - 1].schedule
+                  .start_time)
+              : "Not assined",
+            installation_days: installation_daysDiff
+              ? installation_daysDiff < 1
+                ? "< 1"
+                : Math.round(installation_daysDiff).toString()
+              : "",
+            installation_tat:
+              installation_daysDiff !== null &&
+                installation_daysDiff !== undefined &&
+                installation_daysDiff !== ""
+                ? installation_daysDiff < 1
+                  ? "IN TAT"
+                  : "OUT OF TAT"
+                : "",
+            installation_reschedule_reason:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1].remark,
+            installation_postpone_date:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .postponeDate,
+            count_installation_reschedule:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .postpone_count,
+            installation_complete_date: installationEndTime
+              ? installationEndTime
+              : "",
+            installation_reschedule_days: installation_daysDiff
+              ? installation_daysDiff < 1
+                ? "< 1"
+                : Math.round(installation_daysDiff).toString()
+              : "",
+            installation_reschedule_tat:
+              installation_daysDiff !== null &&
+                installation_daysDiff !== undefined &&
+                installation_daysDiff !== ""
+                ? installation_daysDiff < 1
+                  ? "IN TAT"
+                  : "OUT OF TAT"
+                : "",
+
+            feedback_date: feedback_date,
+            feedback_days: feedback_daysDiff
+              ? feedback_daysDiff < 3
+                ? "< 3"
+                : Math.round(feedback_daysDiff).toString()
+              : "",
+            feedback_tat: feedback_daysDiff
+              ? feedback_daysDiff < 3
+                ? "IN TAT"
+                : "OUT OF TAT"
+              : "",
+            complaint_date: complaint_date ? complaint_date : "",
+            complaint_days: complaint_daysDiff
+              ? complaint_daysDiff < 1
+                ? "< 1"
+                : Math.round(complaint_daysDiff).toString()
+              : "",
+            complaint_tat: complaint_daysDiff
+              ? complaint_daysDiff < 1
+                ? "IN TAT"
+                : "OUT OF TAT"
+              : "",
+            complaint_delay_reason:
+              item.complaint_tasks.length > 0
+                ? item.complaint_tasks[item.complaint_tasks.length - 1].remark
+                : "",
+            remark: item.remark,
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+
+          const addedRow = worksheet.lastRow;
+
+          addedRow.eachCell((cell) => {
+            cell.alignment = { horizontal: "center" };
+          });
+
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.StoreWiseCancellation = async (req, res, next) => {
+  try {
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const EnquiryArray = [];
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    const headerAlignment = { horizontal: "center" };
+
+    worksheet.columns = [
+      {
+        header: "Enquiry Id",
+        key: "enquiryId",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Task Start Date",
+        key: "task_start_date",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Task Start Time",
+        key: "task_start_time",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Customer Name",
+        key: "customerName",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Customer Mobile No.",
+        key: "phone",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Secondary Mobile No.",
+        key: "phone2",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Products",
+        key: "products",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Address",
+        key: "address",
+        width: 150,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Sales Person",
+        key: "sales_person",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Category",
+        key: "category",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurer",
+        key: "measurer",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurement Start Date",
+        key: "assign_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurement Complete Date",
+        key: "task_end",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Measurement Status",
+        key: "measurement_status",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "days",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      { header: "Aging", key: "aging", width: 15 },
+      {
+        header: "Count Measurement Reschedule",
+        key: "count_measurement",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Reason for Reschedule",
+        key: "reason_reschedule",
+        width: 25,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Estimate Created Date",
+        key: "estimate_create_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "days_reschedule",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Aging",
+        key: "aging_reschedule",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Order Confirmation Date",
+        key: "order_confirm_date",
+        width: 23,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "QC Start Date",
+        key: "order_start_date",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "QC Complete Date",
+        key: "order_complete",
+        width: 20,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "days_order",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Aging",
+        key: "aging_order",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Installer Aligned",
+        key: "installer_aligned",
+        width: 35,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Installation Start Date & Time",
+        key: "installation_start_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Installation Complete Date & Time",
+        key: "installation_complete_date",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "days_installation",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Aging",
+        key: "aging_installation",
+        width: 12,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Count of Installation Reschedule",
+        key: "count_installation_reschedule",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Installation Reschedule Status",
+        key: "installation_reschedule_status",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Current Status",
+        key: "status",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Store",
+        key: "store",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+    ];
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let enquiry = [];
+        let dateCondition;
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: "cancelled",
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: Schedule },
+                  {
+                    model: User,
+                    attributes: [
+                      "userId",
+                      "id",
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email",
+                      "type",
+                    ],
+                    as: "installer",
+                  },
+                ],
+              },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: "cancelled",
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: Schedule },
+                  {
+                    model: User,
+                    attributes: [
+                      "userId",
+                      "id",
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email",
+                      "type",
+                    ],
+                    as: "installer",
+                  },
+                ],
+              },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+
+          const products = [];
+          const room = await Room.findAll({
+            where: { enquiryId: item.id },
+            include: [{ model: SelectedMaterial, include: Material }],
+          });
+          for (const i of room) {
+            for (const j of i.selectedmaterials) {
+              if (!products.includes(j.material.name)) {
+                products.push(j.material.name);
+              }
+            }
+          }
+
+          const startTime =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[item.enquiryschedules.length - 1]
+                .createdAt
+              : item.createdAt;
+          const endTime =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[item.enquiryschedules.length - 1]
+                .updatedAt
+              : item.updatedAt;
+          const formattedDate = `${endTime?.toISOString()?.split("T")[0].split("-").reverse().join("-")}`;
+          const measurer =
+            item.enquiryschedules.length > 0 &&
+              item.enquiryschedules[0].user &&
+              item.enquiryschedules[item.enquiryschedules.length - 1].user &&
+              item.enquiryschedules[item.enquiryschedules.length - 1].user
+                .firstName &&
+              item.enquiryschedules[item.enquiryschedules.length - 1].user
+                .lastName
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "User Not Available or Assigned";
+          const installer =
+            item.installer_tasks.length > 0 && item.installer_tasks[0].installer
+              ? `${item.installer_tasks[0].installer.firstName} ${item.installer_tasks[0].installer.lastName}`
+              : "";
+          const installationStartTime =
+            item.installer_tasks.length > 0
+              ? new Date(
+                `${item.installer_tasks[item.installer_tasks.length - 1].date}`,
+              )
+              : "";
+          const installationEndTime =
+            item.installer_tasks.length > 0
+              ? item.installer_tasks[item.installer_tasks.length - 1].updatedAt
+              : "";
+          const order_date =
+            item.orders.length > 0
+              ? item.orders
+                .map((value) =>
+                  value.QC1 == true && value.QC2 == true && value.QC3 == true
+                    ? value.orderDate
+                    : "",
+                )
+                .filter((date) => date !== "")
+              : "";
+          const order_complete =
+            item.orders.length > 0
+              ? item.orders
+                .map((value) =>
+                  value.QC1 == true && value.QC2 == true && value.QC3 == true
+                    ? value.updatedAt
+                    : "",
+                )
+                .filter((date) => date !== "")
+              : "";
+
+          let installation_daysDiff;
+          let installation_hours;
+          if (installationEndTime && installationStartTime) {
+            const timeDiff =
+              new Date(installationEndTime).getTime() -
+              new Date(installationStartTime).getTime();
+            installation_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            installation_hours = (installation_daysDiff * 24).toFixed(0);
+          }
+          let orders_daysDiff = "";
+          let orders_hours = "";
+          if (order_date.length > 0 && order_complete.length > 0) {
+            const start_order =
+              order_date.slice(-1)[0] !== ""
+                ? order_date.slice(-1)[0]?.toISOString()?.split("T")[0]
+                : "";
+            const complete_order =
+              order_complete.slice(-1)[0] !== ""
+                ? order_complete.slice(-1)[0]?.toISOString()?.split("T")[0]
+                : "";
+            if (start_order && complete_order) {
+              const timeDiff =
+                new Date(complete_order).getTime() -
+                new Date(start_order).getTime();
+              orders_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+              orders_hours = (orders_daysDiff * 24).toFixed(0);
+            }
+          }
+
+          let estimate_daysDiff;
+          let estimate_hours;
+          if (startTime) {
+            const endDate = item.estimate_createdAt
+              ? item.estimate_createdAt
+              : new Date();
+            const timeDiff =
+              new Date(endDate).getTime() - new Date(startTime).getTime();
+            estimate_daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            estimate_hours = (estimate_daysDiff * 24).toFixed(0);
+          }
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            // date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer &&
+              item.customer.firstName +
+              " " +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: item.customer && ` ${item.customer.primary_phone} `,
+            phone2:
+              item.customer &&
+              ` ${item.customer.secondary_phone ? item.customer.secondary_phone : ""} `,
+            address:
+              item.address &&
+              `${item.address ? item.address : item.street ? item.street : ""}, ${item.city}, ${item.state}, ${item.pincode}`,
+            category:
+              item.enquirystatuses && item.enquirystatuses.length > 0
+                ? item.enquirystatuses[item.enquirystatuses.length - 1].remark
+                : "",
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            task_start_date: item.createdAt?.toISOString()?.split("T")[0],
+            task_start_time: getTime(item.createdAt),
+            task_end:
+              item.enquiryschedules.length === 0
+                ? "Measurer not assigned"
+                : item.status === "inprogress" ||
+                  item.status === "fresh" ||
+                  (item.enquiryschedules[item.enquiryschedules.length - 1]
+                    .status !== "completed" &&
+                    item.enquiryschedules[item.enquiryschedules.length - 1]
+                      .status == "accepted")
+                  ? "Measurement not completed yet"
+                  : formattedDate + " " + getTime(endTime),
+            days:
+              item.status == "inprogess"
+                ? ""
+                : daysDiff < 1
+                  ? "< 1"
+                  : Math.round(daysDiff).toString(),
+            aging:
+              item.status == "inprogess"
+                ? ""
+                : hours < 24
+                  ? "<24hrs"
+                  : hours > 24 && hours < 48
+                    ? "24hrs"
+                    : hours > 48 && hours < 72
+                      ? "48hrs"
+                      : hours == 72
+                        ? "72hrs"
+                        : ">72hrs",
+            measurer,
+            assign_date:
+              item.enquiryschedules.length == 0
+                ? "Measurer not assgined"
+                : item.enquiryschedules[item.enquiryschedules.length - 1].date +
+                " " +
+                getTime(startTime),
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+            measurement_status:
+              item.enquiryschedules.length == 0
+                ? "Measurer not assgined"
+                : item.enquiryschedules[item.enquiryschedules.length - 1]
+                  .status,
+            count_measurerment:
+              item.enquiryschedules.status == 0
+                ? "Measurer not assgined"
+                : item.enquiryschedules.reduce(
+                  (count, element) =>
+                    element.status === "postponed" ? count + 1 : count,
+                  0,
+                ),
+            reason_reschedule:
+              item.enquiryschedules.length == 0
+                ? "Measurer not assgined"
+                : item.enquiryschedules
+                  .map((value) =>
+                    value.status == "postponed" ? value.remark : "",
+                  )
+                  .join(""),
+            days_reschedule:
+              item.enquiryschedules.status == "pending"
+                ? ""
+                : estimate_daysDiff < 1
+                  ? "< 1"
+                  : Math.round(estimate_daysDiff).toString(),
+            aging_reschedule:
+              item.enquiryschedules.status == "pending"
+                ? ""
+                : estimate_hours < 24
+                  ? "<24hrs"
+                  : estimate_hours > 24 && estimate_hours < 48
+                    ? "24hrs"
+                    : estimate_hours > 48 && estimate_hours < 72
+                      ? "48hrs"
+                      : estimate_hours == 72
+                        ? "72hrs"
+                        : ">72hrs",
+            estimate_create_date:
+              item.enquiryschedules.length === 0
+                ? "Measurer not assigned"
+                : item.status === "inprogress" ||
+                  item.status === "fresh" ||
+                  (item.enquiryschedules[item.enquiryschedules.length - 1]
+                    .status !== "completed" &&
+                    item.enquiryschedules[item.enquiryschedules.length - 1]
+                      .status !== "accepted")
+                  ? "Measurement not completed yet"
+                  : item.estimate_createdAt,
+            installer_aligned: installer,
+            installation_start_date: installationStartTime
+              ? installationStartTime?.toISOString()?.split("T")[0] +
+              " " +
+              (item.installer_tasks &&
+                item.installer_tasks.length > 0 &&
+                item.installer_tasks[item.installer_tasks.length - 1].schedule
+                  .start_time)
+              : "Installer not assined",
+            installation_complete_date:
+              item.installer_tasks.length == 0
+                ? "Installer not assined"
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .status == "completed"
+                  ? installationEndTime?.toISOString()?.split("T")[0] +
+                  " " +
+                  getTime(installationEndTime)
+                  : "Installation not completed yet",
+            days_installation:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .status !== "completed"
+                  ? ""
+                  : installation_daysDiff < 1
+                    ? "< 1"
+                    : Math.round(installation_daysDiff).toString(),
+            aging_installation:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .status !== "completed"
+                  ? ""
+                  : installation_hours < 24
+                    ? "<24hrs"
+                    : installation_hours > 24 && installation_hours < 48
+                      ? "24hrs"
+                      : installation_hours > 48 && installation_hours < 72
+                        ? "48hrs"
+                        : installation_hours == 72
+                          ? "72hrs"
+                          : ">72hrs",
+            count_installation_reschedule:
+              item.installer_tasks.length == 0
+                ? "Installer not assgined"
+                : item.installer_tasks.reduce(
+                  (count, element) =>
+                    element.status === "postponed" ? count + 1 : count,
+                  0,
+                ),
+            installation_reschedule_status:
+              item.installer_tasks.length == 0
+                ? "Installer not assgined"
+                : item.installer_tasks
+                  .map((value) =>
+                    value.status == "postponed" ? value.remark : "",
+                  )
+                  .join(","),
+            order_confirm_date:
+              item.orders.length == 0
+                ? "Order not placed"
+                : item.orders[0].createdAt,
+            order_start_date:
+              item.orders.length == 0
+                ? "Order not placed"
+                : item.orders[0].QC1 == false
+                  ? "QC not started"
+                  : item.orders[0].QC_Start,
+            order_complete:
+              item.orders.length == 0
+                ? "QC not completed"
+                : item.orders[0].QC3 == false
+                  ? "QC not completed"
+                  : item.orders[0].QC_Complete,
+            days_order:
+              item.orders.length == 0
+                ? ""
+                : item.orders[item.orders.length - 1].orderStatus !==
+                  "completed"
+                  ? ""
+                  : orders_daysDiff < 1
+                    ? "< 1"
+                    : Math.round(orders_daysDiff).toString(),
+            aging_order:
+              item.orders.length == 0
+                ? ""
+                : item.orders[item.orders.length - 1].orderStatus !==
+                  "completed"
+                  ? ""
+                  : orders_hours < 24
+                    ? "<24hrs"
+                    : orders_hours > 24 && orders_hours < 48
+                      ? "24hrs"
+                      : orders_hours > 48 && orders_hours < 72
+                        ? "48hrs"
+                        : orders_hours == 72
+                          ? "72hrs"
+                          : ">72hrs",
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+
+          const addedRow = worksheet.lastRow;
+
+          addedRow.eachCell((cell) => {
+            cell.alignment = { horizontal: "center" };
+          });
+
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.StoreWiseCancellationList = async (req, res, next) => {
+  try {
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const EnquiryArray = [];
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let enquiry = [];
+        let dateCondition;
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: "cancelled",
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: Schedule },
+                  {
+                    model: User,
+                    attributes: [
+                      "userId",
+                      "id",
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email",
+                      "type",
+                    ],
+                    as: "installer",
+                  },
+                ],
+              },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: "cancelled",
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+              { model: Order },
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: Schedule },
+                  {
+                    model: User,
+                    attributes: [
+                      "userId",
+                      "id",
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email",
+                      "type",
+                    ],
+                    as: "installer",
+                  },
+                ],
+              },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+
+          const products = [];
+          const room = await Room.findAll({
+            where: { enquiryId: item.id },
+            include: [{ model: SelectedMaterial, include: Material }],
+          });
+          for (const i of room) {
+            for (const j of i.selectedmaterials) {
+              if (!products.includes(j.material.name)) {
+                products.push(j.material.name);
+              }
+            }
+          }
+
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.downloadCurtainFabricData = async (req, res, next) => {
+  try {
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Curtain Fabric Data");
+    const headerAlignment = { horizontal: "center" };
+
+    // Define columns for the Excel sheet
+    worksheet.columns = [
+      { header: "Fabric", key: "fabric", width: 20 },
+      { header: "Width", key: "width", width: 15 },
+      { header: "Repeat Horizontal", key: "repeat_horizontal", width: 20 },
+      { header: "Repeat Vertical", key: "repeat_vertical", width: 20 },
+      { header: "Image", key: "image", width: 30 },
+      { header: "Item ID", key: "item_id", width: 15 },
+      { header: "Book Name", key: "book_name", width: 25 },
+      { header: "Brand Name", key: "brand_name", width: 25 },
+      { header: "Price", key: "price", width: 15 },
+      { header: "Calculation", key: "calculation", width: 15 },
+      { header: "Tax", key: "tax", width: 15 },
+      { header: "Sales Price", key: "sales_price", width: 15 },
+    ];
+
+    // Retrieve data from the database
+    const curtainFabrics = await CurtainFabric.findAll();
+
+    // Add data to the worksheet
+    curtainFabrics.forEach((curtainFabric) => {
+      worksheet.addRow(curtainFabric.toJSON());
+    });
+
+    // Style the header row
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.alignment = headerAlignment;
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    // Set the headers for the response
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=CurtainFabricData.xlsx",
+    );
+
+    // Write the workbook to the response
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.SalesWiseMesurementAging = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const storeSalesPersons = await User.findAll({
+      where: {
+        //  id: req.params.id,
+        type: "sales-person",
+      },
+    });
+    dataNotFound(storeSalesPersons[0], 404, "Sales Person Not found");
+    if (storeSalesPersons.length == 0)
+      throw new Error("No sales person Found in this Store");
+    const outletUser = await OutletUser.findOne({
+      where: { salesPersonId: storeSalesPersons[0].id },
+    });
+    const store = await User.findOne({ where: { id: outletUser.outletId } });
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet(
+      `Measurement Completed (${storeSalesPersons[0].firstName})`,
+    );
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Year", key: "year", width: 15 },
+      { header: "Month.", key: "month", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Category", key: "category", width: 15 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Task Start", key: "task_start", width: 32 },
+      { header: "Measuremt Complete Date", key: "task_end", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "Aging", key: "aging", width: 15 },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 32 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+
+    for (let i = 0; i < storeSalesPersons.length; i++) {
+      const storeSalesPerson = storeSalesPersons[i];
+      let dateCondition;
+      if (req.query.fromDate && req.query.toDate) {
+        dateCondition = {
+          createdAt: {
+            [Op.gte]: req.query.fromDate,
+            [Op.lte]: req.query.toDate,
+          },
+        };
+      }
+      const enquiry = await Enquiry.findAll({
+        where: { salesId: storeSalesPerson.id, ...dateCondition },
+        include: [
+          { model: EnquiryStatus, where: { remark: "Measurement Done" } },
+          { model: Customer },
+          { model: User },
+          {
+            model: Enquiry_Schedule,
+            include: User,
+            where: { status: "completed" },
+          },
+        ],
+      });
+      for (let i = 0; i < enquiry.length; i++) {
+        const item = enquiry[i];
+        const timeDiff =
+          new Date(item.enquirystatuses[0].createdAt).getTime() -
+          new Date(item.createdAt).getTime();
+        let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+        let hours = (daysDiff * 24).toFixed(0);
+
+        worksheet.addRow({
+          enquiryId: item.enquiryId,
+          year: new Date(item.createdAt).getFullYear(),
+          month: monthNumberToWord(new Date(item.createdAt).getMonth() + 1),
+          date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+          customerName:
+            item.customer.firstName +
+            " " +
+            (item.customer.lastName ? item.customer.lastName : ""),
+          phone: ` ${item.customer.primary_phone}  ,  ${item.customer.secondary_phone ? item.customer.secondary_phone : ""}`,
+          address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+          category: "Measurement",
+          sales_person:
+            item.user.firstName +
+            (item.user.lastName ? item.user.lastName : ""),
+          task_start: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+          task_end: new Date(item.enquirystatuses[0].createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          days: daysDiff < 1 ? "< 1" : Math.round(daysDiff),
+          aging:
+            hours < 24
+              ? "<24hrs"
+              : hours > 24 && hours < 48
+                ? "24hrs"
+                : hours > 48 && hours < 72
+                  ? "48hrs"
+                  : hours == 72
+                    ? "72hrs"
+                    : ">72hrs",
+          measurer: item.enquiryschedules[0].user
+            ? `${item.enquiryschedules[0].user.firstName} ${item.enquiryschedules[0].user.lastName}`
+            : "User Not Available",
+          status: item.status,
+          store: store.firstName,
+        }).border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+        EnquiryArray.push(item);
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Sales).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.StoreWiseShareEstimateAging = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Estimate Shared");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      // { header: 'Secondary Mobile No.', key: 'phone2', width: 32, },
+      { header: "Remark", key: "remark", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      // { header: 'Task Start', key: 'task_start', width: 32, },
+      { header: "Measurement Start Date", key: "assign_date", width: 32 },
+      { header: "Measurment Complete Date", key: "task_end", width: 32 },
+      // { header: 'Days', key: 'days', width: 15, },
+      // { header: 'TAT', key: 'tat', width: 15, },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Enquiry Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        let enquiry = [];
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["measurement-complete"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              // status: {
+              //     [Op.or]: ["measurement-complete"]
+              // }
+            },
+            include: [
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+        const measurementCompleted = enquiry.filter(
+          (enq) =>
+            enq.status === "measurement-complete" &&
+            enq.estimate_created === false,
+        );
+
+        for (let k = 0; k < measurementCompleted.length; k++) {
+          const item = measurementCompleted[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          //console.log(item.enquiryId)
+          const startTime = item.estimate_createdAt
+            ? item.estimate_createdAt
+            : "";
+          const endTime =
+            item.enquiryschedules.length > 0
+              ? item.enquiryschedules[item.enquiryschedules.length - 1]
+                .updatedAt
+              : item.updatedAt;
+          const date = endTime?.toISOString()?.split("T")[0];
+          const parts = date.split("-");
+          const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+          const measurer =
+            item.enquiryschedules.length > 0 && item.enquiryschedules[0].user
+              ? `${item.enquiryschedules[item.enquiryschedules.length - 1].user.firstName} ${item.enquiryschedules[item.enquiryschedules.length - 1].user.lastName}`
+              : "User Not Available or Assigned";
+
+          let daysDiff = "";
+          if (startTime && endTime) {
+            const timeDiff =
+              new Date().getTime(startTime) - new Date(endTime).getTime();
+            daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+            let hours = (daysDiff * 24).toFixed(0);
+          }
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            // phone2: ` ${item.customer.secondary_phone ? item.customer.secondary_phone : ""}`,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            remark:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            // task_start: startTime,
+            task_end: item.status == "inprogess" ? "" : formattedDate,
+            // days: daysDiff ?( daysDiff < 1 ? "< 1" : Math.round(daysDiff).toString()): "",
+            // tat: daysDiff ?( daysDiff < 1 ? "IN TAT" : "OUT OF TAT"):"",
+            measurer,
+            assign_date:
+              item.enquiryschedules.length > 0
+                ? item.enquiryschedules[item.enquiryschedules.length - 1]
+                  .measurement_start
+                : "",
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.InstallerWiseInstallationAging = async (req, res, next) => {
+  try {
+    const todayDate = moment().startOf("day").format("YYYY-MM-DD");
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Installation (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Store", key: "store", width: 32 },
+      { header: "Sales Person", key: "sales_person", width: 32 },
+      { header: "Vendor", key: "installer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Pending reason", key: "pending_reason", width: 32 },
+      { header: "Installation Postpone Date", key: "postpone_date", width: 32 },
+    ];
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, size: 12, color: { argb: "000000" } };
+    headerRow.alignment = { horizontal: "center", vertical: "middle" };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFFF00" },
+    };
+    headerRow.height = 25;
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let enquiry = [];
+        let dateCondition;
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.or]: [
+                  "installer-assigned",
+                  "installation-started",
+                  "installation-done",
+                  "completed",
+                ],
+              },
+            },
+            include: [
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: User, as: "installer" },
+                  { model: User, as: "warehouse" },
+                  Schedule,
+                ],
+              },
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.or]: [
+                  "installer-assigned",
+                  "installation-started",
+                  "installation-done",
+                  "completed",
+                ],
+              },
+            },
+            include: [
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: User, as: "installer" },
+                  { model: User, as: "warehouse" },
+                  Schedule,
+                ],
+              },
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        const pendingEnquiry = enquiry.filter(
+          (enq) =>
+            enq.installer_tasks.length > 0 &&
+            enq.installer_tasks[enq.installer_tasks.length - 1].date ==
+            todayDate,
+        );
+
+        for (let k = 0; k < pendingEnquiry.length; k++) {
+          const item = pendingEnquiry[k];
+          // const products = []
+          // const selectedmaterial = await SelectedMaterial.findAll({ where: { enquiryId: item.id }, include: [Material] })
+
+          // for (const l of selectedmaterial) {
+          //     const materials = await Material.findOne({ where: { id: l.materialId } });
+          //     if (!products.includes(materials.name)) {
+          //         products.push(materials.name);
+          //     }
+          // }
+
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            customerName:
+              item.customer.firstName +
+              " " +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            store: store.firstName,
+            installer:
+              `${item.installer_tasks[0].installer.firstName} ${item.installer_tasks[0].installer.lastName}` ||
+              "",
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            status: item.status,
+            pending_reason: item.installer_tasks[0].remark || "",
+            postpone_date: item.installer_tasks[0].postponeDate || "",
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+
+      worksheet.eachRow({ includeEmpty: false }, (row) => {
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+      });
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Installetion Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.InstallerWiseInstallationComplete = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Installation (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Secondary Mobile No.", key: "phone2", width: 32 },
+      { header: "Remark", key: "remark", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      // { header: 'Task Start', key: 'task_start', width: 32, },
+      {
+        header: "Installation Assign Date",
+        key: "expected_installation",
+        width: 32,
+      },
+      // { header: 'Expected Installation Date', key: 'expected_delivery', width: 32, },
+      {
+        header: "Expected Delivery Date",
+        key: "installation_assign_date",
+        width: 32,
+      },
+      { header: "Installation Start Date", key: "assign_date", width: 32 },
+      { header: "Installation Complete Date", key: "task_end", width: 32 },
+      { header: "Installation Status", key: "installation_status", width: 32 },
+      // { header: 'Days', key: 'days', width: 15, },
+      // { header: 'TAT', key: 'tat', width: 15, },
+      { header: "Installer", key: "installer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.or]: ["completed"],
+              },
+            },
+            include: [
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: User, as: "installer" },
+                  { model: User, as: "warehouse" },
+                  Schedule,
+                ],
+              },
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.or]: ["completed"],
+              },
+            },
+            include: [
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: User, as: "installer" },
+                  { model: User, as: "warehouse" },
+                  Schedule,
+                ],
+              },
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const startTime =
+            item.installer_tasks.length > 0
+              ? item.installer_tasks[item.installer_tasks.length - 1].date
+              : item.createdAt;
+          const endTime =
+            item.installer_tasks.length > 0
+              ? item.installer_tasks[item.installer_tasks.length - 1].updatedAt
+              : item.updatedAt;
+          const date = endTime?.toISOString()?.split("T")[0];
+          const parts = date.split("-");
+          const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+          const installer =
+            item.installer_tasks.length > 0 && item.installer_tasks[0].installer
+              ? `${item.installer_tasks[item.installer_tasks.length - 1].installer.firstName} ${item.installer_tasks[item.installer_tasks.length - 1].installer.lastName}`
+              : "User Not Available or Assigned";
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            phone2: ` ${item.customer.secondary_phone ? item.customer.secondary_phone : ""}`,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            remark:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            // task_start: item.installer_tasks.length != 0 ? item.installer_tasks[item.installer_tasks.length - 1].date : "Installer not assigned",
+            task_end:
+              item.installer_tasks.length &&
+                item.installer_tasks[item.installer_tasks.length - 1]
+                  .installation_done
+                ? item.installer_tasks[item.installer_tasks.length - 1]
+                  .installation_done
+                : "",
+            installer,
+            assign_date:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1].date,
+            installation_assign_date:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .createdAt,
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+            installation_status:
+              item.installer_tasks.length == 0
+                ? ""
+                : item.installer_tasks[item.installer_tasks.length - 1].status,
+            expected_installation: item.expected_installation_date,
+            // expected_delivery: item.expected_delivery_date,
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+exports.installationCompletedList = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    let stores;
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        let enquiry = [];
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        if (
+          salesPersonIdFromQuery &&
+          salesPersonIdFromQuery == storeSalesPerson.dataValues.salesPersonId
+        ) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.or]: ["completed"],
+              },
+            },
+            include: [
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: User, as: "installer" },
+                  { model: User, as: "warehouse" },
+                  Schedule,
+                ],
+              },
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        } else if (!salesPersonIdFromQuery) {
+          const enquiries = await Enquiry.findAll({
+            where: {
+              salesId: storeSalesPerson.dataValues.salesPersonId,
+              ...dateCondition,
+              status: {
+                [Op.or]: ["completed"],
+              },
+            },
+            include: [
+              {
+                model: InstallerTasks,
+                include: [
+                  { model: User, as: "installer" },
+                  { model: User, as: "warehouse" },
+                  Schedule,
+                ],
+              },
+              { model: EnquiryStatus },
+              { model: Customer },
+              { model: User },
+              { model: Enquiry_Schedule, include: User },
+              { model: Room },
+            ],
+          });
+          enquiry.push(...enquiries);
+        }
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+exports.InstallerWiseInstallationStarted = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const stores = await User.findAll({ where: { type: "outlet" } });
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Installation (Store)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Customer Mobile No.", key: "phone", width: 32 },
+      { header: "Secondary Mobile No.", key: "phone2", width: 32 },
+      { header: "Category", key: "category", width: 30 },
+      { header: "Products", key: "products", width: 50 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Task Start", key: "task_start", width: 32 },
+      {
+        header: "Installation Assign Date",
+        key: "expected_installation",
+        width: 32,
+      },
+      // { header: 'Expected Installation Date', key: 'expected_delivery', width: 32, },
+      {
+        header: "Expected Delivery Date",
+        key: "installation_assign_date",
+        width: 32,
+      },
+      { header: "Installation Start Date", key: "assign_date", width: 32 },
+      { header: "Installation Complete Date", key: "task_end", width: 32 },
+      { header: "Installation Status", key: "installation_status", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "Aging", key: "aging", width: 15 },
+      { header: "Installer", key: "installer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Address", key: "address", width: 80 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+        let dateCondition;
+        if (req.query.fromDate && req.query.toDate) {
+          dateCondition = {
+            createdAt: {
+              [Op.gte]: req.query.fromDate,
+              [Op.lte]: req.query.toDate,
+            },
+          };
+        }
+        const enquiry = await Enquiry.findAll({
+          where: {
+            salesId: storeSalesPerson.dataValues.salesPersonId,
+            ...dateCondition,
+            status: {
+              [Op.or]: ["installation-started"],
+            },
+          },
+          include: [
+            {
+              model: InstallerTasks,
+              include: [
+                { model: User, as: "installer" },
+                { model: User, as: "warehouse" },
+                Schedule,
+              ],
+            },
+            { model: EnquiryStatus },
+            { model: Customer },
+            { model: User },
+            { model: Enquiry_Schedule, include: User },
+            { model: Room },
+          ],
+        });
+
+        for (let k = 0; k < enquiry.length; k++) {
+          const item = enquiry[k];
+          const products = [];
+          const selectedmaterial = await SelectedMaterial.findAll({
+            where: { enquiryId: item.id },
+            include: [Material],
+          });
+
+          for (const l of selectedmaterial) {
+            const materials = await Material.findOne({
+              where: { id: l.materialId },
+            });
+            if (!products.includes(materials.name)) {
+              products.push(materials.name);
+            }
+          }
+          const startTime =
+            item.installer_tasks.length > 0
+              ? item.installer_tasks[item.installer_tasks.length - 1].date
+              : item.createdAt;
+          const endTime =
+            item.installer_tasks.length > 0
+              ? item.installer_tasks[item.installer_tasks.length - 1].updatedAt
+              : item.updatedAt;
+          const date = endTime?.toISOString()?.split("T")[0];
+          const parts = date.split("-");
+          const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+          const installer =
+            item.installer_tasks.length > 0 && item.installer_tasks[0].installer
+              ? `${item.installer_tasks[item.installer_tasks.length - 1].installer.firstName} ${item.installer_tasks[item.installer_tasks.length - 1].installer.lastName}`
+              : "User Not Available or Assigned";
+
+          const timeDiff =
+            new Date(endTime).getTime() - new Date(startTime).getTime();
+          let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+          let hours = (daysDiff * 24).toFixed(0);
+          worksheet.addRow({
+            enquiryId: item.enquiryId,
+            date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+            customerName:
+              item.customer.firstName +
+              " " +
+              (item.customer.lastName ? item.customer.lastName : ""),
+            phone: ` ${item.customer.primary_phone} `,
+            phone2: ` ${item.customer.secondary_phone ? item.customer.secondary_phone : ""}`,
+            address: `${item.street}, ${item.address}, ${item.city}, ${item.state}, ${item.pincode}`,
+            category:
+              item.enquirystatuses[item.enquirystatuses.length - 1].remark,
+            sales_person:
+              item.user.firstName +
+              (item.user.lastName ? item.user.lastName : ""),
+            task_start:
+              item.installer_tasks.length != 0
+                ? item.installer_tasks[item.installer_tasks.length - 1].date
+                : "Installer not assigned",
+            task_end:
+              item.installer_tasks.length != 0 &&
+                item.installer_tasks[item.installer_tasks.length - 1].status !=
+                "completed"
+                ? " Installation not completed yet "
+                : formattedDate,
+            days:
+              item.installer_tasks.length != 0 &&
+                item.installer_tasks[item.installer_tasks.length - 1].status !=
+                "completed"
+                ? ""
+                : daysDiff < 1
+                  ? "< 1"
+                  : Math.round(daysDiff).toString(),
+            aging:
+              item.installer_tasks.length != 0 &&
+                item.installer_tasks[item.installer_tasks.length - 1].status !=
+                "completed"
+                ? ""
+                : hours < 24
+                  ? "<24hrs"
+                  : hours > 24 && hours < 48
+                    ? "24hrs"
+                    : hours > 48 && hours < 72
+                      ? "48hrs"
+                      : hours == 72
+                        ? "72hrs"
+                        : ">72hrs",
+            installer,
+            assign_date:
+              item.installer_tasks.length != 0 &&
+                item.installer_tasks.length == 0
+                ? "Installer not assgined"
+                : startTime,
+            installation_assign_date:
+              item.installer_tasks.length == 0
+                ? "Installer not assgined"
+                : item.installer_tasks[item.installer_tasks.length - 1]
+                  .createdAt,
+            status: item.status,
+            store: store.firstName,
+            products: products.toString(),
+            installation_status:
+              item.installer_tasks.length == 0
+                ? "Installer not assgined"
+                : item.installer_tasks[item.installer_tasks.length - 1].status,
+            expected_installation: item.expected_installation_date,
+            // expected_delivery : item.expected_delivery_date,
+          }).border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+          EnquiryArray.push(item);
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Completed(Store).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+exports.InstallersWiseHighestEnquiryMaker = async (req, res, next) => {
+  try {
+    const Measurer = await User.findAll({ where: { type: "installer" } });
+    dataNotFound(Measurer[0], 404, "Measurer Not Found");
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Top IC (F&F)");
+    worksheet.columns = [
+      { header: "Installer", key: "installer", width: 50 },
+      { header: "Lead", key: "lead", width: 15 },
+      { header: "Cancelled", key: "cancel", width: 15 },
+      { header: "Total", key: "total", width: 15 },
+    ];
+
+    const alpha = "ABCD".split("");
+
+    for (let i = 0; i < alpha.length; i++) {
+      //console.log(alpha[i])
+      worksheet.getCell(`${alpha[i]}1`).border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+    const arr = [];
+    for (let i = 0; i < Measurer.length; i++) {
+      const Meas = Measurer[i];
+      totalEnquiryCount = await InstallerTasks.count({
+        where: { installerId: Meas.id },
+      });
+      cancelledEnquiry = await InstallerTasks.count({
+        where: { installerId: Meas.id, status: "canceled" },
+      });
+      LeadEnquiry = await InstallerTasks.count({
+        where: { installerId: Meas.id, status: { [Op.ne]: "canceled" } },
+      });
+      arr.push({
+        totalEnquiryCount,
+        measurer: `${Meas.firstName} ${Meas.lastName}`,
+        cancelledEnquiry,
+        LeadEnquiry,
+      });
+    }
+
+    arr.sort((a, b) => b.totalEnquiryCount - a.totalEnquiryCount);
+    for (let i = 0; i < arr.length; i++) {
+      const item = arr[i];
+      const row = worksheet.addRow({
+        installer: item.measurer,
+        lead: item.LeadEnquiry,
+        cancel: item.cancelledEnquiry,
+        total: item.totalEnquiryCount,
+      });
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        cell.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+      });
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Highest Installation F&F.xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+  } catch (e) {
+    next(e);
+  }
+};
+exports.searchEnquiry = async (req, res, next) => {
+  try {
+    const data = await Enquiry.findAll({
+      where: { id: { [Op.like]: `%${req.query.id}%` } },
+      include: [EnquiryStatus, User, Customer],
+    });
+
+    for (var i = 0; i < data.length; i++) {
+      const enq = data[i];
+
+      const products = [];
+      const room = await Room.findAll({
+        where: { enquiryId: enq.id },
+        include: [{ model: SelectedMaterial, include: Material }],
+      });
+      for (const i of room) {
+        for (const j of i.selectedmaterials) {
+          // //console.log(j)
+          if (!products.includes(j.material.name)) {
+            //console.log(j.material.name)
+            products.push(j.material.name);
+          }
+        }
+        //   const materials = await Material.findOne({ where: { id: i.materialId } });
+      }
+      enq.dataValues.products = products;
+    }
+
+    return res.status(200).json({
+      message: "Enquiries Fetched Successfully",
+      data: data,
+      status: true,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.MeasurerWiseMesurementTaskAging = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const measurer = await User.findOne({
+      where: {
+        id: req.params.id,
+        type: "measurer",
+      },
+    });
+    dataNotFound(measurer, 404, "Measurer Not Found");
+    const enquiryschedules = await Enquiry_Schedule.findAll({
+      where: { schedulePersonId: measurer.id, status: "completed" },
+    });
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Measurement Completed (Measurer)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Year", key: "year", width: 15 },
+      { header: "Month.", key: "month", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Category", key: "category", width: 15 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Task Start", key: "task_start", width: 32 },
+      { header: "Measuremt Complete Date", key: "task_end", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "Aging", key: "aging", width: 15 },
+      { header: "Measurer", key: "measurer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+
+    for (let i = 0; i < enquiryschedules.length; i++) {
+      const enquiryschedule = enquiryschedules[i];
+      const enquiry = await Enquiry.findOne({
+        where: { id: enquiryschedule.enquiryId },
+        include: [
+          { model: Customer },
+          { model: User },
+          {
+            model: Enquiry_Schedule,
+            include: User,
+            where: { status: "completed" },
+          },
+        ],
+      });
+
+      const MeasurementStart = await EnquiryStatus.findOne({
+        where: { enquiryId: enquiry.id, remark: "Measurer Assigned" },
+      });
+      const MeasurementEnd = await EnquiryStatus.findOne({
+        where: { enquiryId: enquiry.id, remark: "Measurement Done" },
+      });
+      if (enquiry) {
+        const timeDiff =
+          new Date(MeasurementEnd.createdAt).getTime() -
+          new Date(MeasurementStart.createdAt).getTime();
+        //console.log(MeasurementEnd.createdAt, MeasurementStart.createdAt)
+        let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+        let hours = (daysDiff * 24).toFixed(0);
+        const row = worksheet.addRow({
+          enquiryId: enquiry.enquiryId,
+          year: new Date(enquiryschedule.createdAt).getFullYear(),
+          month: monthNumberToWord(
+            new Date(enquiryschedule.createdAt).getMonth() + 1,
+          ),
+          date: new Date(enquiryschedule.createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          customerName:
+            enquiry.customer.firstName +
+            (enquiry.customer.lastName ? enquiry.customer.lastName : ""),
+          category: "Measurement",
+          sales_person:
+            enquiry.user.firstName +
+            (enquiry.user.lastName ? enquiry.user.lastName : ""),
+          task_start: new Date(MeasurementStart.createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          task_end: new Date(MeasurementEnd.createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          days: daysDiff < 1 ? "< 1" : Math.round(daysDiff),
+          aging:
+            hours < 24
+              ? "<24hrs"
+              : hours > 24 && hours < 48
+                ? "24hrs"
+                : hours > 48 && hours < 72
+                  ? "48hrs"
+                  : hours == 72
+                    ? "72hrs"
+                    : ">72hrs",
+          measurer: measurer.firstName + " " + measurer.lastName,
+          status: enquiry.status,
+          // store: store.firstName
+        });
+
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+        EnquiryArray.push(enquiry);
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Measurement Aging(Measurer Wise).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+exports.InstallerWiseInstallationTaskAging = async (req, res, next) => {
+  try {
+    const EnquiryArray = [];
+    const measurer = await User.findOne({
+      where: {
+        id: req.params.id,
+        type: "installer",
+      },
+    });
+    dataNotFound(measurer, 404, "Installer Not Found");
+    const enquiryschedules = await InstallerTasks.findAll({
+      where: { installerId: measurer.id, status: "completed" },
+    });
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("Measurement Completed (Measurer)");
+    worksheet.columns = [
+      { header: "Enquiry Id", key: "enquiryId", width: 15 },
+      { header: "Year", key: "year", width: 15 },
+      { header: "Month.", key: "month", width: 15 },
+      { header: "Date", key: "date", width: 15 },
+      { header: "Customer Name", key: "customerName", width: 32 },
+      { header: "Category", key: "category", width: 15 },
+      { header: "Sales Person", key: "sales_person", width: 50 },
+      { header: "Task Start", key: "task_start", width: 32 },
+      { header: "Installation Complete Date", key: "task_end", width: 32 },
+      { header: "Days", key: "days", width: 15 },
+      { header: "Aging", key: "aging", width: 15 },
+      { header: "Installer", key: "measurer", width: 32 },
+      { header: "Status", key: "status", width: 32 },
+      { header: "Store", key: "store", width: 50 },
+    ];
+
+    for (let i = 0; i < enquiryschedules.length; i++) {
+      const enquiryschedule = enquiryschedules[i];
+      const enquiry = await Enquiry.findOne({
+        where: { id: enquiryschedule.enquiryId, status: "completed" },
+        include: [
+          { model: Customer },
+          { model: User },
+          {
+            model: Enquiry_Schedule,
+            include: User,
+            where: { status: "completed" },
+          },
+        ],
+      });
+
+      if (enquiry) {
+        const timeDiff =
+          new Date(enquiry.updatedAt).getTime() -
+          new Date(enquiryschedule.createdAt).getTime();
+        let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+        let hours = (daysDiff * 24).toFixed(0);
+        const row = worksheet.addRow({
+          enquiryId: enquiry.enquiryId,
+          year: new Date(enquiryschedule.createdAt).getFullYear(),
+          month: monthNumberToWord(
+            new Date(enquiryschedule.createdAt).getMonth() + 1,
+          ),
+          date: new Date(enquiryschedule.createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          customerName:
+            enquiry.customer.firstName +
+            (enquiry.customer.lastName ? enquiry.customer.lastName : ""),
+          category: "Measurement",
+          sales_person:
+            enquiry.user.firstName +
+            (enquiry.user.lastName ? enquiry.user.lastName : ""),
+          task_start: new Date(enquiryschedule.createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          task_end: new Date(enquiry.updatedAt)?.toISOString()?.split("T")[0],
+          days: daysDiff < 1 ? "< 1" : Math.round(daysDiff),
+          aging:
+            hours < 24
+              ? "<24hrs"
+              : hours > 24 && hours < 48
+                ? "24hrs"
+                : hours > 48 && hours < 72
+                  ? "48hrs"
+                  : hours == 72
+                    ? "72hrs"
+                    : ">72hrs",
+          measurer: measurer.firstName + " " + measurer.lastName,
+          status: enquiry.status,
+          // store: store.firstName
+        });
+
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+        EnquiryArray.push(enquiry);
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Installation Aging(installer Wise).xlsx",
+    );
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+    // return res.status(200).json({
+    //     message: "Enquiry Data Fetched",
+    //     status: true,
+    //     data: EnquiryArray
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.createComplaints = async (req, res, next) => {
+  try {
+    const body = req.body.data;
+    for (let i = 0; i < body.length; i++) {
+      const check = await Complaint.findOne({
+        where: { type: body[i].type, materialId: body[i].materialId },
+      });
+      if (!check) {
+        await Complaint.create({
+          type: body[i].type,
+          description: body[i].description,
+          materialId: body[i].materialId,
+          tat: body[i].tat,
+          purchase_complaint: body[i].purchase_complaint,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      message: "complaints added seccessfully",
+      status: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getComplaints = async (req, res, next) => {
+  try {
+    const complaints = await Complaint.findAll({
+      where: { materialId: req.params.materialId },
+    });
+
+    return res.status(200).json({
+      message: "Complaints Data Fetched",
+      status: true,
+      data: complaints,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteComplaint = async (req, res, next) => {
+  try {
+    const complaint = await Complaint.findOne({ where: { id: req.params.id } });
+    dataNotFound(complaint, 400, "Complaints not found");
+    await complaint.destroy();
+
+    return res.status(200).json({
+      message: "complaint delete seccessfully",
+      status: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.customerComplaints = async (req, res, next) => {
+  try {
+    const where = {};
+    if (req.query.status === "close") {
+      where.status = {
+        [Op.in]: ["completed", "cancelled"],
+      };
+    } else {
+      where.status = {
+        [Op.in]: ["pending", "active"],
+      };
+    }
+
+    if (req.query.enquiryId) {
+      const complaint_task = await ComplaintTask.findAll({
+        where: { enquiryId: req.query.enquiryId, ...where },
+        include: [
+          { model: User },
+          { model: Schedule },
+          { model: Enquiry, include: Customer },
+          { model: User, as: "INSTALLER" },
+        ],
+      });
+
+      for (let i = 0; i < complaint_task.length; i++) {
+        const data = JSON.parse(complaint_task[i].complaint_info);
+        complaint_task[i].dataValues.complaint_info = data;
+        for (let j = 0; j < complaint_task[i].complaint_info.length; j++) {
+          const item = complaint_task[i].complaint_info[j];
+          const complaint_details = await Complaint.findOne({
+            where: { id: item.complaintId },
+            include: Material,
+          });
+          item.material = complaint_details.material;
+        }
+        delete complaint_task[i].complaint_info;
+      }
+
+      return res.status(200).json({
+        message: "Complaints Fetched seccessfully",
+        status: true,
+        data: complaint_task,
+      });
+    }
+
+    const limit = parseInt(req.query.pageSize) || 10;
+    const page = parseInt(req.query.pageNo) || 1;
+    const offset = (page - 1) * limit;
+
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const salesPersonIds = [];
+    let stores;
+
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    dataNotFound(stores[0], 404, "Store Not Found");
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+
+        if (storeSalesPerson) {
+          salesPersonIds.push(storeSalesPerson.dataValues.salesPersonId);
+        }
+      }
+    }
+
+    let include = [];
+
+    if (req.query.storeId) {
+      include = [
+        {
+          model: Enquiry,
+          where: {
+            salesId: {
+              [Op.in]: salesPersonIds,
+            },
+          },
+          include: [
+            {
+              model: User,
+              attributes: { exclude: ["password", "accessToken"] },
+            },
+            { model: Customer },
+          ],
+        },
+        {
+          model: Schedule,
+        },
+        {
+          model: User,
+          as: "INSTALLER",
+          attributes: { exclude: ["password", "accessToken"] },
+        },
+      ];
+    } else {
+      include = [
+        {
+          model: Enquiry,
+          include: [
+            {
+              model: User,
+              attributes: { exclude: ["password", "accessToken"] },
+            },
+            { model: Customer },
+          ],
+        },
+        {
+          model: Schedule,
+        },
+        {
+          model: User,
+          as: "INSTALLER",
+          attributes: { exclude: ["password", "accessToken"] },
+        },
+      ];
+    }
+
+    const complaint_task = await ComplaintTask.findAndCountAll({
+      where: where,
+      include: [...include, { model: Customer }],
+      offset,
+      limit,
+      order: [
+        [
+          Sequelize.literal(`CASE 
+                        WHEN complaint_task.status = 'active' THEN 1 
+                        WHEN complaint_task.status = 'pending' THEN 2 
+                        ELSE 3 
+                    END`),
+          "ASC",
+        ],
+        ["createdAt", "DESC"],
+      ],
+    });
+
+    await Promise.all(
+      complaint_task.rows.map(async (task) => {
+        const complaintInfo = JSON.parse(task.complaint_info);
+        task.dataValues.complaint_info = complaintInfo;
+
+        await Promise.all(
+          complaintInfo.map(async (item) => {
+            const complaintDetails = await Complaint.findOne({
+              where: { id: item.complaintId },
+              include: Material,
+            });
+            item.material = complaintDetails.material;
+          }),
+        );
+
+        delete task.complaint_info;
+        return task;
+      }),
+    );
+
+    const totalPages = Math.ceil(complaint_task.count / limit);
+    const obj = {
+      totalItems: complaint_task.count,
+      totalPages,
+      currentPage: page,
+      complaint_task: complaint_task.rows,
+    };
+
+    return res.status(200).json({
+      message: "Complaints Fetched seccessfully",
+      status: true,
+      data: obj,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// exports.getComplaintDetail = async(req, res, next) =>{
+//   try {
+//         const complaint = await ComplaintTask.findOne({where: {id: req.params.id},
+//             include: [
+//                 { model: Enquiry, include:[
+//                     {model:Customer},
+//                     {model:User, attributes:{ exclude: ['password', 'accessToken'] }}
+//                     ]
+//                 },
+//                 { model: Schedule },
+//                 { model: User, as: "INSTALLER" , attributes:{ exclude: ['password', 'accessToken'] }}
+//             ]
+//         })
+
+//         const outletUser = await OutletUser.findOne({
+//             where: { salesPersonId: complaint.enquiry.salesId },
+//         });
+//         let outlet;
+//         if (outletUser) {
+//             outlet = await User.findOne({
+//                 where: { id: outletUser.outletId },
+//                 attributes: ["id", "firstName", "phone", "email"],
+//             });
+
+//             complaint.dataValues.outlet = outlet;
+//         }
+
+//         return res.status(200).json({
+//             message: "Complaint Fetched seccessfully",
+//             status: true,
+//             data: complaint
+//         })
+//   } catch (e) {
+//       next(e)
+//   }
+// }
+
+exports.getComplaintDetail = async (req, res, next) => {
+  try {
+    const complaint = await ComplaintTask.findOne({
+      where: { id: req.params.id },
+      include: [
+        { model: Customer, include: [Address] },
+        {
+          model: Enquiry,
+          include: [
+            { model: Customer },
+            {
+              model: User,
+              attributes: { exclude: ["password", "accessToken"] },
+            },
+          ],
+        },
+        { model: Schedule },
+        {
+          model: User,
+          as: "INSTALLER",
+          attributes: { exclude: ["password", "accessToken"] },
+        },
+      ],
+    });
+
+    if (complaint.enquiry && complaint.enquiry.salesId) {
+      const outletUser = await OutletUser.findOne({
+        where: { salesPersonId: complaint.enquiry.salesId },
+      });
+      let outlet;
+      if (outletUser) {
+        outlet = await User.findOne({
+          where: { id: outletUser.outletId },
+          attributes: ["id", "firstName", "phone", "email"],
+        });
+
+        complaint.dataValues.outlet = outlet;
+      }
+    }
+
+    return res.status(200).json({
+      message: "Complaint Fetched seccessfully",
+      status: true,
+      data: complaint,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.add_remark = async (req, res, next) => {
+  try {
+    const remark = await Enquiry.findOne({ where: { id: req.body.enquiryId } });
+
+    if (remark.admin_remark) {
+      await remark.update({
+        admin_remark: `${remark.admin_remark} , ${req.body.remark}`,
+      });
+    } else {
+      await remark.update({
+        admin_remark: req.body.remark,
+      });
+    }
+    return res.status(200).json({
+      message: "Remark add seccessfully",
+      status: true,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.complaintResolved = async (req, res, next) => {
+  try {
+    const complaint = await ComplaintTask.findOne({
+      where: { id: req.params.id },
+      include: Enquiry,
+    });
+    dataNotFound(complaint, 400, "This complaint not Exists");
+
+    const data = JSON.parse(complaint.remark);
+
+    const arr = [];
+    if (data && data.length > 0) {
+      for (var i = 0; i < data.length; i++) {
+        const oldremark = data[i];
+        arr.push(oldremark);
+      }
+    }
+    arr.push(req.body.remark);
+
+    await complaint.update({
+      status: "completed",
+      remark: JSON.stringify(arr),
+    });
+
+    await EnquiryStatus.create({
+      remark: "complaint resolved",
+      status: "completed",
+      enquiryId: complaint.enquiryId,
+    });
+
+    ////////***************** COMPLAINT CLOSE MESSAGE ****************////////////////////////
+    const customer = await Customer.findOne({
+      where: { id: complaint.customerId },
+    });
+    const message = complaint_close_msg(
+      customer.firstName + " " + customer.lastName,
+    );
+    // whatsappMessage(message, customer.primary_phone)
+    ////////***************** COMPLAINT CLOSE MESSAGE ****************////////////////////////
+
+    return res.status(200).json({
+      message: "Complaint resolved done",
+      status: true,
+      data: complaint,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.customerComplaintsExcel = async (req, res, next) => {
+  try {
+    const all_data = [];
+
+    const salesPersonIds = [];
+
+    if (req.query.storeId) {
+      const data = await OutletUser.findAll({
+        where: { outletId: req.query.storeId },
+      });
+      data.forEach((element) => {
+        salesPersonIds.push(element.salesPersonId);
+      });
+    } else {
+      const data = await OutletUser.findAll();
+      data.forEach((element) => {
+        salesPersonIds.push(element.salesPersonId);
+      });
+    }
+
+    let dateCondition;
+    if (req.query.fromDate && req.query.toDate) {
+      dateCondition = {
+        createdAt: {
+          [Op.gte]: req.query.fromDate,
+          [Op.lte]: req.query.toDate,
+        },
+      };
+    }
+
+    if (req.query.type) {
+      const complaint_task = await ComplaintTask.findAll({
+        where: { ...dateCondition },
+        include: [
+          {
+            model: Enquiry,
+            where: { salesId: { [Op.in]: salesPersonIds } },
+            include: [Customer, User],
+          },
+          {
+            model: User,
+            as: "INSTALLER",
+            attributes: ["id", "firstName", "lastName", "phone"],
+          },
+        ],
+      });
+
+      for (let i = 0; i < complaint_task.length; i++) {
+        const data = JSON.parse(complaint_task[i].complaint_info);
+        complaint_task[i].dataValues.complaint_info = data;
+
+        const outlet_user = await OutletUser.findOne({
+          where: { salesPersonId: complaint_task[i].enquiry.salesId },
+        });
+        const store = await User.findOne({
+          where: { id: outlet_user.outletId },
+        });
+        complaint_task[i].enquiry.dataValues.store = store;
+
+        const category = [];
+        const complaint_type = [];
+        for (let j = 0; j < complaint_task[i].complaint_info.length; j++) {
+          const item = complaint_task[i].complaint_info[j];
+          const complaint_details = await Complaint.findOne({
+            where: { id: item.complaintId },
+            include: Material,
+          });
+          if (complaint_details) {
+            item.material = complaint_details.material;
+            category.push(complaint_task[i].complaint_info[j].material.name);
+            complaint_type.push(complaint_task[i].complaint_info[j].type);
+          }
+        }
+        const item = complaint_task[i];
+        all_data.push(item);
+      }
+      return res.status(200).json({
+        message: "Enquiry Data Fetched",
+        status: true,
+        data: all_data,
+      });
+    } else {
+      const workbook = new Excel.Workbook();
+      const worksheet = workbook.addWorksheet("Customer Complaints");
+      worksheet.columns = [
+        { header: "Enquiry Id", key: "enquiryId", width: 15 },
+        { header: "Customer Name", key: "customerName", width: 32 },
+        { header: "Sales Person", key: "salesPerson", width: 32 },
+        { header: "Create Date", key: "task_start", width: 15 },
+        { header: "Resolve Date", key: "task_end", width: 15 },
+        { header: "Installer", key: "installar", width: 32 },
+        { header: "Status", key: "status", width: 32 },
+        { header: "Category", key: "category", width: 15 },
+        { header: "Store", key: "store", width: 32 },
+        { header: "Complaint Type", key: "complaint_type", width: 40 },
+        { header: "Days", key: "days", width: 15 },
+        { header: "Aging", key: "aging", width: 15 },
+        { header: "TAT", key: "tat", width: 10 },
+      ];
+
+      // const complaint_task = await ComplaintTask.findAll({
+      //     where: { ...dateCondition },
+      //     include: [
+      //         { model: Enquiry,where:{salesId:{[Op.in]: salesPersonIds}}, include: [Customer, User], },
+      //         { model: User, as: "INSTALLER", attributes: ["id", "firstName", "lastName", "phone"] }
+      //     ]
+      // })
+      // dataNotFound(complaint_task, 400, "complaint not exists")
+
+      let include = [];
+
+      if (req.query.storeId) {
+        include = [
+          {
+            model: Enquiry,
+            where: {
+              salesId: {
+                [Op.in]: salesPersonIds,
+              },
+            },
+            include: [
+              {
+                model: User,
+                attributes: { exclude: ["password", "accessToken"] },
+              },
+              { model: Customer },
+            ],
+          },
+          {
+            model: Schedule,
+          },
+          {
+            model: User,
+            as: "INSTALLER",
+            attributes: { exclude: ["password", "accessToken"] },
+          },
+        ];
+      } else {
+        include = [
+          {
+            model: Enquiry,
+            include: [
+              {
+                model: User,
+                attributes: { exclude: ["password", "accessToken"] },
+              },
+              { model: Customer },
+            ],
+          },
+          {
+            model: Schedule,
+          },
+          {
+            model: User,
+            as: "INSTALLER",
+            attributes: { exclude: ["password", "accessToken"] },
+          },
+        ];
+      }
+
+      const complaint_task = await ComplaintTask.findAll({
+        include: [...include, { model: Customer }],
+      });
+
+      for (let i = 0; i < complaint_task.length; i++) {
+        const data = JSON.parse(complaint_task[i].complaint_info);
+        complaint_task[i].dataValues.complaint_info = data;
+
+        if (complaint_task[i].enquiry) {
+          const outlet_user = await OutletUser.findOne({
+            where: { salesPersonId: complaint_task[i].enquiry.salesId },
+          });
+          const store = await User.findOne({
+            where: { id: outlet_user.outletId },
+          });
+          complaint_task[i].enquiry.dataValues.store = store;
+        }
+
+        const category = [];
+        const complaint_type = [];
+        for (let j = 0; j < complaint_task[i].complaint_info.length; j++) {
+          const item = complaint_task[i].complaint_info[j];
+          const complaint_details = await Complaint.findOne({
+            where: { id: item.complaintId },
+            include: Material,
+          });
+          if (complaint_details) {
+            item.material = complaint_details.material;
+            category.push(complaint_task[i].complaint_info[j].material.name);
+            complaint_type.push(complaint_task[i].complaint_info[j].type);
+          }
+        }
+
+        const item = complaint_task[i];
+        // console.log(item)
+        const timeDiff =
+          new Date(item.date).getTime() - new Date(item.createdAt).getTime();
+        let daysDiff = timeDiff / (1000 * 3600 * 24).toFixed(0);
+        let hours = (daysDiff * 24).toFixed(0);
+
+        const uniqueSet = new Set(category);
+        const unique_category = [...uniqueSet];
+        const row = worksheet.addRow({
+          enquiryId: item.enquiry ? item.enquiry.enquiryId : "-",
+          complaint_type: complaint_type.join(","),
+          salesPerson: item.enquiry
+            ? item.enquiry.user.firstName +
+            " " +
+            (item.enquiry.user.lastName ? item.enquiry.user.lastName : "")
+            : "-",
+          customerName:
+            item.customer.firstName +
+            " " +
+            (item.customer.lastName ? item.customer.lastName : ""),
+          category: unique_category.join(","),
+          installar: item.INSTALLER
+            ? item.INSTALLER.firstName +
+            " " +
+            (item.INSTALLER.lastName ? item.INSTALLER.lastName : "")
+            : "installar not assigned",
+          task_start: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+          task_end: item.date ? item.date : "",
+          days: daysDiff < 1 ? "< 1" : Math.round(daysDiff),
+          aging:
+            hours < 24
+              ? "<24hrs"
+              : hours > 24 && hours < 48
+                ? "24hrs"
+                : hours > 48 && hours < 72
+                  ? "48hrs"
+                  : hours == 72
+                    ? "72hrs"
+                    : ">72hrs",
+          status: item.status,
+          store: item.enquiry
+            ? item.enquiry.dataValues.store.firstName
+            : "ADMIN",
+          tat: hours < 48 ? "In TAT" : "Out TAT",
+        });
+
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+        delete complaint_task[i].complaint_info;
+
+        all_data.push(item);
+      }
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=" + "Complaints(Enquiry Wise).xlsx",
+      );
+      await workbook.xlsx.write(res);
+      res.status(200).end();
+      // return res.status(200).json({
+      //     message: "Enquiry Data Fetched",
+      //     status: true,
+      //     data: all_data
+      // })
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.feedbackExcel = async (req, res, next) => {
+  try {
+    const all_data = [];
+    let dateCondition;
+    if (req.query.fromDate && req.query.toDate) {
+      dateCondition = {
+        createdAt: {
+          [Op.gte]: req.query.fromDate,
+          [Op.lte]: req.query.toDate,
+        },
+      };
+    }
+    if (req.query.type) {
+      const feedback = await Feedback.findAll({
+        where: { ...dateCondition },
+        include: { model: Enquiry, include: [Customer, User] },
+      });
+
+      for (let i = 0; i < feedback.length; i++) {
+        const item = feedback[i];
+        item.dataValues.description = JSON.parse(item.description);
+        all_data.push(item);
+      }
+      return res.status(200).json({
+        message: "Enquiry Data Fetched",
+        status: true,
+        data: all_data,
+      });
+    } else {
+      const workbook = new Excel.Workbook();
+      const worksheet = workbook.addWorksheet("Customer Feedbacks");
+      worksheet.columns = [
+        { header: "Enquiry Id", key: "enquiryId", width: 15 },
+        { header: "Enquiry Date", key: "enquiry_date", width: 15 },
+        { header: "Customer Name", key: "customerName", width: 32 },
+        { header: "Customer Phone", key: "customerPhone", width: 20 },
+        { header: "Sales Person", key: "salesPerson", width: 20 },
+        { header: "Date", key: "date", width: 15 },
+        { header: "Q.1", key: "q1", width: 10 },
+        { header: "Q.2", key: "q2", width: 10 },
+        { header: "Q.3", key: "q3", width: 10 },
+        { header: "Q.4", key: "q4", width: 10 },
+        { header: "Q.5", key: "q5", width: 10 },
+        { header: "Rating", key: "q6", width: 10 },
+      ];
+
+      const feedback = await Feedback.findAll({
+        where: { ...dateCondition },
+        include: { model: Enquiry, include: [Customer, User] },
+      });
+
+      for (let i = 0; i < feedback.length; i++) {
+        const item = feedback[i];
+        item.dataValues.description = JSON.parse(item.description);
+
+        const row = worksheet.addRow({
+          enquiryId: item.enquiry.enquiryId,
+          enquiry_date: new Date(item.enquiry.createdAt)
+            ?.toISOString()
+            .split("T")[0],
+          customerName:
+            item.enquiry.customer.firstName +
+            " " +
+            (item.enquiry.customer.lastName
+              ? item.enquiry.customer.lastName
+              : ""),
+          salesPerson:
+            item.enquiry.user.firstName +
+            " " +
+            (item.enquiry.user.lastName ? item.enquiry.user.lastName : ""),
+          date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+          customerPhone: item.enquiry.customer.primary_phone,
+          q1: item.description[0].ans,
+          q2: item.description[1].ans,
+          q3: item.description[2].ans,
+          q4: item.description[3].ans,
+          q5: item.description[4].ans,
+          q6: item.description[5].ans,
+        });
+
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+      }
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=" + "Feedbacks(Enquiry Wise).xlsx",
+      );
+      await workbook.xlsx.write(res);
+      res.status(200).end();
+      // return res.status(200).json({
+      //     message: "Enquiry Data Fetched",
+      //     status: true,
+      //     data: feedback
+      // })
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.wcrReport = async (req, res, next) => {
+  try {
+    let dateCondition;
+    if (req.query.fromDate && req.query.toDate) {
+      dateCondition = {
+        createdAt: {
+          [Op.gte]: req.query.fromDate,
+          [Op.lte]: req.query.toDate,
+        },
+      };
+    }
+    if (req.query.type) {
+      const report = await Wcr_Report.findAll({
+        where: { ...dateCondition },
+        include: { model: Enquiry, include: [Customer, User] },
+        order: [["enquiryId", "ASC"]],
+      });
+      return res.status(200).json({
+        message: "Enquiry Data Fetched",
+        status: true,
+        data: report,
+      });
+    } else {
+      const workbook = new Excel.Workbook();
+      const worksheet = workbook.addWorksheet("Customer Feedbacks");
+      worksheet.columns = [
+        { header: "Enquiry Id", key: "enquiryId", width: 15 },
+        { header: "Customer Name", key: "customerName", width: 32 },
+        { header: "Customer Phone", key: "customerPhone", width: 20 },
+        { header: "Sales Person", key: "salesPerson", width: 30 },
+        { header: "Wcr Add Date", key: "date", width: 15 },
+        { header: "Wcr Completed", key: "wcr_completed", width: 40 },
+        { header: "Wcr Pending", key: "wcr_pending", width: 40 },
+      ];
+
+      const report = await Wcr_Report.findAll({
+        where: { ...dateCondition },
+        include: { model: Enquiry, include: [Customer, User] },
+        order: [["enquiryId", "ASC"]],
+      });
+      for (let i = 0; i < report.length; i++) {
+        const item = report[i];
+
+        let dataCompleted = [];
+        let dataPending = [];
+        const jsonData = JSON.parse(item.report);
+
+        for (var j = 0; j < jsonData.length; j++) {
+          const reports = jsonData[j];
+          if (reports.wcr) {
+            dataCompleted.push(reports.title);
+          } else {
+            dataPending.push(reports.title);
+          }
+        }
+
+        const row = worksheet.addRow({
+          enquiryId: item.enquiry.enquiryId,
+          customerName:
+            item.enquiry.customer.firstName +
+            " " +
+            (item.enquiry.customer.lastName
+              ? item.enquiry.customer.lastName
+              : ""),
+          customerPhone: item.enquiry.contactNumber,
+          salesPerson:
+            item.enquiry.user.firstName +
+            " " +
+            (item.enquiry.user.lastName ? item.enquiry.user.lastName : ""),
+          date: new Date(item.createdAt)?.toISOString()?.split("T")[0],
+          wcr_completed: dataCompleted.join(","),
+          wcr_pending: dataPending.join(", "),
+        });
+
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+      }
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=" + "wcr report(Enquiry Wise).xlsx",
+      );
+      await workbook.xlsx.write(res);
+      res.status(200).end();
+      // return res.status(200).json({
+      //     message: "Enquiry Data Fetched",
+      //     status: true,
+      //     data: report
+      // })
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.enquiryCompleted = async (req, res, next) => {
+  try {
+    const enquirydata = await Enquiry.findOne({
+      where: { id: req.body.enquiryId },
+    });
+    dataNotFound(enquirydata, 400, "Enquiry not Exists");
+
+    enquirydata.status = "completed";
+    enquirydata.remark = req.body.remark;
+    await enquirydata.save();
+    await enquirydata.reload();
+
+    const schedule = await Enquiry_Schedule.findOne({
+      where: { enquiryId: enquirydata.id },
+      order: [["id", "DESC"]],
+    });
+    // dataNotFound(schedule, 400, "Measurement not completed")
+    if (schedule) {
+      schedule.status = "completed";
+      await schedule.save();
+      await schedule.reload();
+    }
+
+    const installerSchedule = await InstallerTasks.findOne({
+      where: {
+        enquiryId: req.body.enquiryId,
+      },
+      order: [["id", "DESC"]],
+    });
+
+    if (installerSchedule) {
+      await installerSchedule.update({
+        status: "completed",
+        installerId: req.body.installerId,
+      });
+    }
+
+    const enquiryStatus = await EnquiryStatus.findOne({
+      where: {
+        remark: "Measurement Done",
+        status: "completed",
+        enquiryId: enquirydata.id,
+      },
+    });
+    if (!enquiryStatus) {
+      await EnquiryStatus.create({
+        remark: "Measurement Done",
+        status: "completed",
+        enquiryId: enquirydata.id,
+      });
+    }
+
+    const order = await Order.findOne({ where: { enquiryId: enquirydata.id } });
+    if (order) {
+      await order.update({
+        orderStatus: "completed",
+      });
+    }
+
+    await EnquiryStatus.create({
+      remark: "Enquiry Completed",
+      status: "completed",
+      enquiryId: enquirydata.id,
+      details: {
+        remark: req.body.remark,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Enquiry Completed Successfully",
+      data: req.body,
+      status: true,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.sendMail = async (req, res, next) => {
+  let allFile;
+  try {
+    const { file, body } = await UploadFile(req, "complaint_mail");
+    allFile = file;
+    const complaint = await Complaint.findOne({
+      where: { id: req.params.id },
+      include: Material,
+    });
+    if (complaint.purchase_complaint == "0") {
+      throw new Error("This is not a purchase complaint");
+    }
+
+    const enquiry_data = await ComplaintTask.findOne({
+      where: { id: req.body.complaintTaskId },
+      include: [{ model: Enquiry, include: [User, Customer] }],
+    });
+
+    let img = [];
+    if (file) {
+      if (file.length == 1) {
+        img.push(file.path);
+      } else {
+        for (var i = 0; i < file.length; i++) {
+          img.push(file[i].path);
+        }
+      }
+      if (enquiry_data.images == null) {
+        await enquiry_data.update({
+          images: JSON.stringify(img),
+        });
+      } else {
+        const old_data = JSON.parse(enquiry_data.images);
+        old_data.push(...img);
+        enquiry_data.images = JSON.stringify(old_data);
+      }
+    }
+
+    enquiry_data.dataValues.remark = req.body.remark;
+    await enquiry_data.save();
+
+    const html = mail_formet(complaint, enquiry_data, img);
+    // const mail = ["ffemerchandiser@fandf.in", "scmretail@fandf.in", "crmretail@fandf.in", "ffslcsd@fandf.in"]
+    const mail = ["Crm@fandf.in", "Gmretail@fandf.in", "Nakul@fandf.in"];
+
+    for (let i = 0; i < mail.length; i++) {
+      // console.log(mail[i])
+      sendMail(mail[i], "Customer Complaint", html);
+    }
+
+    return res.status(200).json({
+      message: "Mail send seccessfully",
+      status: true,
+      data: enquiry_data,
+    });
+  } catch (e) {
+    if (allFile.length == 1) {
+      removefile(allFile.path);
+    } else {
+      for (let i = 0; i < allFile.length; i++) {
+        removefile(allFile[i].path);
+      }
+    }
+    next(e);
+  }
+};
+
+exports.createEstimate = async (req, res, next) => {
+  try {
+    const enquiry = await Enquiry.findOne({
+      where: { id: req.params.enquiryId },
+    });
+    dataNotFound(enquiry, 400, "Enquiry not found");
+
+    if (
+      enquiry.status == "fresh" ||
+      enquiry.status == "inprogess" ||
+      enquiry.status == "measurer-assigned"
+    ) {
+      throw new Error("Measurement not completed");
+    } else if (enquiry.status == "estimate-created") {
+      throw new Error("Estimate already created");
+    } else {
+      await enquiry.update({
+        status: "estimate-created",
+        estimate_created: true,
+        estimate_createdAt: new Date(),
+      });
+
+      await EnquiryStatus.create({
+        remark: "Estimate created",
+        status: "completed",
+        enquiryId: enquiry.id,
+      });
+
+      return res.status(200).json({
+        message: "Estimate created",
+        status: true,
+        data: enquiry,
+      });
+    }
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.postponedEstimate = async (req, res, next) => {
+  try {
+    const enquiry = await Enquiry.findOne({
+      where: { id: req.body.enquiryId },
+    });
+    dataNotFound(enquiry, 400, "Enquiry not found");
+
+    // if(req.body.reason == "High Price" || req.body.reason == "Budget issue" || req.body.reason == "Browse Surroundings"){
+    //     await enquiry.update({
+    //         status: "cancelled",
+    //         estimate_postpone_date: new Date(req.body.date),
+    //         estimate_postpone_reason: req.body.reason
+    //     })
+
+    //     await EnquiryStatus.create({
+    //         remark: "Enquiry cancelled",
+    //         status: "completed",
+    //         enquiryId: enquiry.id,
+    //         details: {
+    //             "date": req.body.date,
+    //             "remark": req.body.reason,
+    //         }
+    //     });
+
+    // }else
+    if (req.body.reason == "Purchase only Material") {
+      await enquiry.update({
+        status: "completed",
+        estimate_postpone_date: new Date(req.body.date),
+        estimate_postpone_reason: req.body.reason,
+      });
+
+      await EnquiryStatus.create({
+        remark: "Enquiry completed",
+        status: "completed",
+        enquiryId: enquiry.id,
+        details: {
+          date: req.body.date,
+          remark: req.body.reason,
+        },
+      });
+    } else {
+      await enquiry.update({
+        status: "estimate-postpone",
+        estimate_postpone_date: new Date(req.body.date),
+        estimate_postpone_reason: req.body.reason,
+        estimate_postpone_count: enquiry.estimate_postpone_count + 1,
+      });
+
+      await EnquiryStatus.create({
+        remark: "Estimate postponed",
+        status: "completed",
+        enquiryId: enquiry.id,
+        details: {
+          date: req.body.date,
+          remark: req.body.reason,
+        },
+      });
+    }
+
+    return res.status(200).json({
+      message: "Estimate updated",
+      status: true,
+      data: enquiry,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.storewiseAllEnquiry = async (req, res, next) => {
+  try {
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const orderby = req.query.orderby
+      ? ["id", req.query.orderby]
+      : ["id", "DESC"];
+
+    const salesPersonIdFromQuery = req.query.salesId || "";
+    const EnquiryArray = [];
+    const salesPersonIds = [];
+    let stores;
+
+    if (salesPersonIdFromQuery) {
+      salesPersonIds.push(salesPersonIdFromQuery);
+    } else {
+      if (req.query.storeId) {
+        stores = await User.findAll({ where: { id: req.query.storeId } });
+      } else {
+        stores = await User.findAll({ where: { type: "outlet" } });
+      }
+      dataNotFound(stores[0], 404, "Store Not Found");
+
+      for (let i = 0; i < stores.length; i++) {
+        const store = stores[i];
+        const storeSalesPersons = await OutletUser.findAll({
+          where: { outletId: store.id },
+        });
+
+        for (let j = 0; j < storeSalesPersons.length; j++) {
+          const storeSalesPerson = storeSalesPersons[j];
+
+          if (storeSalesPerson) {
+            salesPersonIds.push(storeSalesPerson.dataValues.salesPersonId);
+          }
+        }
+      }
+    }
+
+    let dateCondition = {};
+    // if (req.query.fromDate && req.query.toDate) {
+    //     dateCondition.createdAt = {
+    //         [Op.gte]: req.query.fromDate,
+    //         [Op.lte]: req.query.toDate
+    //     };
+    // }
+    if (req.query.fromDate && req.query.toDate) {
+      const fromDate = new Date(req.query.fromDate);
+      fromDate.setHours(0, 0, 0, 0); // Sets time to 00:00:00.000
+
+      const toDate = new Date(req.query.toDate);
+      toDate.setHours(23, 59, 59, 999); // Sets time to 23:59:59.999
+
+      dateCondition.createdAt = {
+        [Op.gte]: fromDate,
+        [Op.lte]: toDate,
+      };
+    }
+    if (req.query.search) {
+      dateCondition[Op.or] = [
+        {
+          id: {
+            [Op.like]: `%${req.query.search}%`,
+          },
+        },
+        {
+          contactPerson: {
+            [Op.like]: `%${req.query.search}%`,
+          },
+        },
+      ];
+    }
+    if (req.query.status) {
+      dateCondition.status = req.query.status;
+    }
+
+    const whereCondition = {
+      salesId: { [Op.in]: salesPersonIds },
+      ...dateCondition,
+    };
+
+    const includeOptions = [
+      { model: EnquiryStatus },
+      { model: Customer },
+      { model: User },
+      { model: Enquiry_Schedule, include: User },
+      { model: Room },
+      { model: Order },
+      { model: Feedback },
+      { model: ComplaintTask },
+      {
+        model: InstallerTasks,
+        include: [
+          { model: Schedule },
+          {
+            model: User,
+            attributes: [
+              "userId",
+              "id",
+              "firstName",
+              "lastName",
+              "phone",
+              "email",
+              "type",
+            ],
+            as: "installer",
+          },
+        ],
+      },
+    ];
+
+    const { rows: enquiries, count } = await Enquiry.findAndCountAll({
+      where: whereCondition,
+      include: includeOptions,
+      distinct: true,
+      order: [orderby],
+      limit,
+      offset,
+    });
+
+    for (const item of enquiries) {
+      const products = [];
+      const rooms = await Room.findAll({
+        where: { enquiryId: item.id },
+        include: [{ model: SelectedMaterial, include: Material }],
+      });
+
+      for (const room of rooms) {
+        for (const material of room.selectedmaterials) {
+          if (!products.includes(material.material.name)) {
+            products.push(material.material.name);
+          }
+        }
+      }
+      item.dataValues.products = products;
+
+      EnquiryArray.push(item);
+    }
+
+    // Adding additional pagination info
+    const totalPages = Math.ceil(count / limit);
+    return res.status(200).json({
+      message: "Enquiry Data Fetched",
+      status: true,
+      data: EnquiryArray,
+      pagination: {
+        currentPage: page,
+        perPage: limit,
+        total: count,
+        totalPages: totalPages,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.get_measurer_enquiry = async (req, res, next) => {
+  try {
+    const limit = parseInt(req.query.pageSize) || 10;
+    const page = parseInt(req.query.pageNo) || 1;
+
+    const offset = (page - 1) * limit;
+
+    const date_clause = { status: "pending" };
+    let where = { status: "measurer-assigned" };
+    if (req.query.status) {
+      date_clause.status = req.query.status;
+    }
+
+    const { count, rows: data } = await Enquiry_Schedule.findAndCountAll({
+      where: { ...date_clause },
+      include: [
+        { model: Enquiry, where, include: [Customer, User] },
+        Schedule,
+        { model: User },
+      ],
+      limit,
+      offset,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+    });
+
+    for (var i = 0; i < data.length; i++) {
+      const enq = data[i].enquiry;
+      const products = [];
+      const room = await Room.findAll({
+        where: { enquiryId: enq.id },
+        include: [{ model: SelectedMaterial, include: Material }],
+      });
+
+      for (const i of room) {
+        for (const j of i.selectedmaterials) {
+          if (!products.includes(j.material.name)) {
+            products.push(j.material.name);
+          }
+        }
+      }
+
+      enq.dataValues.products = products;
+    }
+
+    const totalPages = Math.ceil(count / limit);
+
+    // Return the paginated response
+    const obj = {
+      totalItems: count,
+      totalPages,
+      currentPage: page,
+      data,
+    };
+    return res.status(200).json({
+      message: "list of measurer enquiry",
+      data: obj,
+      status: true,
+    });
+  } catch (err) {
+    err.statusCode = 500;
+    next(err);
+  }
+};
+
+exports.getInstallerTasks = async (req, res, next) => {
+  try {
+    const limit = parseInt(req.query.pageSize) || 10;
+    const page = parseInt(req.query.pageNo) || 1;
+
+    const offset = (page - 1) * limit;
+
+    const date_clause = { status: "pending" };
+    if (req.query.postpone_date) {
+      date_clause.postponeDate = req.query.postpone_date;
+    }
+    if (req.query.date) {
+      date_clause.date = req.query.date;
+    }
+    if (req.query.status) {
+      date_clause.status = req.query.status;
+    }
+
+    let orderBy = ["date", "ASC"];
+    if (req.query.status == "postponed") {
+      orderBy = ["postponeDate", "ASC"];
+    }
+
+    const { count, rows: data } = await InstallerTasks.findAndCountAll({
+      where: { ...date_clause },
+      include: [
+        { model: Customer, include: Address },
+        { model: Schedule },
+        { model: User, as: "installer" },
+        { model: User, as: "warehouse" },
+      ],
+      limit,
+      offset,
+      distinct: true,
+      order: [orderBy],
+    });
+
+    const totalPages = Math.ceil(count / limit);
+
+    const obj = {
+      totalItems: count,
+      totalPages,
+      currentPage: page,
+      data,
+    };
+    return res.status(200).json({
+      message: "All Tasks Fetched",
+      data: obj,
+      status: true,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.materialReceivingReport = async (req, res, next) => {
+  try {
+    const salesPersonIds = [];
+    let EnquiryArray = [];
+    let stores;
+
+    if (req.query.storeId) {
+      stores = await User.findAll({ where: { id: req.query.storeId } });
+    } else {
+      stores = await User.findAll({ where: { type: "outlet" } });
+    }
+    if (!stores || stores.length === 0) {
+      return res.status(404).json({ message: "Store Not Found" });
+    }
+
+    const workbook = new Excel.Workbook();
+    const worksheet = workbook.addWorksheet("QC (Store)");
+    const headerAlignment = { horizontal: "center" };
+
+    worksheet.columns = [
+      {
+        header: "Enquiry Id",
+        key: "enquiryId",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Customer Name",
+        key: "customerName",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Sales Person",
+        key: "sales_person",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Room Name",
+        key: "room_name",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Item Name",
+        key: "item_name",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Item Category",
+        key: "item_category",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Order Number",
+        key: "order_number",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Order Date",
+        key: "order_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Exp Receiving Date",
+        key: "expected_receiving_date",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Actual Delivery Date",
+        key: "ACTUAL_DELIVERY_DATE",
+        width: 30,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "PO/STA NO",
+        key: "PO_STA_NO",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Material Status",
+        key: "material_status",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "STA Date",
+        key: "STA_DATE",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Days",
+        key: "days",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "QC Status",
+        key: "qc_status",
+        width: 32,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Store Location",
+        key: "store_location",
+        width: 50,
+        style: { alignment: headerAlignment },
+      },
+      {
+        header: "Enquiry Stauts",
+        key: "enquiry_status",
+        width: 15,
+        style: { alignment: headerAlignment },
+      },
+    ];
+
+    for (let i = 0; i < stores.length; i++) {
+      const store = stores[i];
+      const storeSalesPersons = await OutletUser.findAll({
+        where: { outletId: store.id },
+      });
+
+      for (let j = 0; j < storeSalesPersons.length; j++) {
+        const storeSalesPerson = storeSalesPersons[j];
+
+        if (storeSalesPerson) {
+          salesPersonIds.push(storeSalesPerson.dataValues.salesPersonId);
+        }
+      }
+    }
+    const enquiries = await Enquiry.findAll({
+      where: {
+        status: {
+          [Op.notIn]: ["completed", "cancelled"],
+        },
+        salesId: { [Op.in]: salesPersonIds },
+      },
+      include: [
+        {
+          model: Order,
+          where: { orderStatus: { [Op.in]: ["pending", "accepted"] } },
+          include: {
+            model: OrderItem,
+            include: Room,
+          },
+        },
+        {
+          model: Customer,
+        },
+        {
+          model: User,
+        },
+      ],
+    });
+
+    console.log(enquiries.length, "llllllllllllllllllllllength");
+    for (const item of enquiries) {
+      if (item.orders && item.orders.length > 0) {
+        const store = await OutletUser.findOne({
+          where: { salesPersonId: item.salesId },
+          include: [{ model: User, as: "outlet" }],
+        });
+
+        for (const order of item.orders) {
+          if (order.order_items && order.order_items.length > 0) {
+            for (const orderItem of order.order_items) {
+              let actualDeliveryDate = "";
+              if (orderItem.delivery_date) {
+                const date = new Date(orderItem.delivery_date);
+                date.setDate(date.getDate() + 4);
+                actualDeliveryDate = date
+                  ?.toISOString()
+                  .replace("T", " ")
+                  .substring(0, 19);
+              }
+
+              // Add row to the worksheet
+              const row = worksheet.addRow({
+                enquiryId: item.enquiryId,
+                customerName: item.customer
+                  ? `${item.customer.firstName} ${item.customer.lastName || ""}`
+                  : "N/A",
+                sales_person: item.user
+                  ? `${item.user.firstName} ${item.user.lastName || ""}`
+                  : "N/A",
+                room_name: orderItem.room?.roomName || "",
+                item_name: orderItem.product_name || "",
+                item_category: orderItem.type || "",
+                order_number: order.orderId || "",
+                order_date: order.orderDate || "",
+                expected_receiving_date: orderItem.delivery_date || "",
+                ACTUAL_DELIVERY_DATE: actualDeliveryDate,
+                PO_STA_NO: orderItem.sta_po_no || "",
+                material_status: orderItem.sta_status || "",
+                STA_DATE: orderItem.sta_po_date || "",
+                days: orderItem.days || "",
+                qc_status: order.QC1
+                  ? "QC1 DONE"
+                  : order.QC2
+                    ? "QC2 DONE"
+                    : order.QC3
+                      ? "QC3 DONE"
+                      : "",
+                store_location: store.dataValues.outlet.firstName || "",
+                enquiry_status: item.status,
+              });
+
+              // Apply border to the entire row
+              row.eachCell((cell) => {
+                cell.border = {
+                  top: { style: "thin" },
+                  left: { style: "thin" },
+                  bottom: { style: "thin" },
+                  right: { style: "thin" },
+                };
+              });
+
+              // Highlight `expected_receiving_date` if it's greater than today
+              if (orderItem.delivery_date) {
+                const today = new Date();
+                const deliveryDate = new Date(orderItem.delivery_date);
+
+                if (deliveryDate < today) {
+                  row.getCell("expected_receiving_date").fill = {
+                    type: "pattern",
+                    pattern: "solid",
+                    fgColor: { argb: "FFFF00" }, // Yellow highlight
+                  };
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", "attachment; filename=Store.xlsx");
+
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+
+    // return res.status(200).json({
+    //     message: "All Tasks Fetched",
+    //     data: EnquiryArray,
+    //     status: true
+    // })
+  } catch (e) {
+    next(e);
+  }
+};
